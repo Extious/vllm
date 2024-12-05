@@ -26,6 +26,7 @@ from vllm.worker.enc_dec_model_runner import EncoderDecoderModelRunner
 from vllm.worker.model_runner import GPUModelRunnerBase, ModelRunner
 from vllm.worker.worker_base import (LocalOrDistributedWorkerBase, WorkerBase,
                                      WorkerInput)
+from vllm.python_nccl.nccl_worker import NCCLWorker
 
 logger = init_logger(__name__)
 
@@ -108,6 +109,9 @@ class Worker(LocalOrDistributedWorkerBase):
                     torch_profiler_trace_dir, use_gzip=True))
         else:
             self.profiler = None
+
+        self.nccl_worker = NCCLWorker()
+        self.nccl_worker.start()
 
     def start_profile(self):
         if self.profiler is None:
