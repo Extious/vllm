@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Attention layer."""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union  # 添加 Union 导入
 
 import torch
 import torch.nn as nn
@@ -155,6 +155,9 @@ class Attention(nn.Module):
         value: torch.Tensor,
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
+        status: int,
+        cache_fuse_metadata: dict,
+        old_kv,
     ) -> torch.Tensor:
         # NOTE: please avoid accessing `kv_cache` and `attn_metadata` arguments
         # directly, use `self.kv_cache` and
@@ -198,8 +201,13 @@ class Attention(nn.Module):
                 return self.impl.forward(self, query, key, value,
                                          self_kv_cache, ctx_attn_metadata)
             else:
-                return torch.ops.vllm.unified_attention(
-                    query, key, value, self.layer_name)
+                return self.impl.forward(self, query, key, value, kv_cache,
+                                attn_metadata, status, cache_fuse_metadata,
+                                old_kv)
+                # import json
+                # cache_fuse_str = json.dumps(cache_fuse_metadata) if cache_fuse_metadata else None
+                # return torch.ops.vllm.unified_attention(
+                #     query, key, value, self.layer_name, status, cache_fuse_str, old_kv)
 
     def calc_kv_scales(self, key, value):
         self._k_scale.copy_(torch.abs(key).max() / self.k_range)
@@ -299,12 +307,21 @@ def unified_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     layer_name: str,
+    status: int,
+    cache_fuse_metadata: Optional[str],
+    old_kv: List[Optional[torch.Tensor]],
 ) -> torch.Tensor:
+    import json
+    
     forward_context: ForwardContext = get_forward_context()
     attn_metadata = forward_context.attn_metadata
     self = forward_context.attn_layers[layer_name]
     kv_cache = self.kv_cache[forward_context.virtual_engine]
-    return self.impl.forward(self, query, key, value, kv_cache, attn_metadata)
+    
+    # 将字符串解析回字典
+    cache_fuse_dict = json.loads(cache_fuse_metadata) if cache_fuse_metadata is not None else None
+    
+    return self.impl.forward(self, query, key, value, kv_cache, attn_metadata, status, cache_fuse_dict, old_kv)
 
 
 def unified_attention_fake(
@@ -312,6 +329,9 @@ def unified_attention_fake(
     key: torch.Tensor,
     value: torch.Tensor,
     layer_name: str,
+    status: int,
+    cache_fuse_metadata: Optional[str],  # 使用 Optional[str] 而不是 Optional[dict]
+    old_kv: List[Optional[torch.Tensor]],
 ) -> torch.Tensor:
     return torch.empty_like(query).contiguous()
 

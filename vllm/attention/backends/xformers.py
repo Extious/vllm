@@ -8,7 +8,8 @@ from xformers import ops as xops
 from xformers.ops.fmha.attn_bias import (AttentionBias,
                                          BlockDiagonalCausalMask,
                                          BlockDiagonalMask,
-                                         LowerTriangularMaskWithTensorBias)
+                                         LowerTriangularMaskWithTensorBias,
+                                         LowerTriangularFromBottomRightMask)
 
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionLayer,
@@ -425,6 +426,9 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         value: Optional[torch.Tensor],
         kv_cache: torch.Tensor,
         attn_metadata: "XFormersMetadata",
+        status: int,
+        cache_fuse_metadata: dict,
+        old_kv,
         output: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass with xFormers and PagedAttention.
@@ -499,7 +503,55 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             value = value.view(-1, self.num_kv_heads, self.head_size)
         else:
             assert value is None
+        if status in [1, 2]:
+            key_old = old_kv[0].view(-1, self.num_kv_heads, self.head_size)
+            value_old = old_kv[1].view(-1, self.num_kv_heads, self.head_size)
+        if status in [1]:
+            last_len = cache_fuse_metadata['suffix_len']
+            total_len = value.shape[0]
+            last_indices = [total_len-last_len+l for l in range(last_len)]
 
+            topk_num = int((total_len-last_len)*cache_fuse_metadata["recomp_ratio"])
+            # print(f"value shape: {value.shape}, value_old shape: {value_old.shape}, last_len: {last_len}")
+            temp_diff = torch.sum((value[:-last_len,:,:]-value_old[:-last_len,:,:])**2, dim=[1,2])
+            # temp_diff = visualize_value_diff(cache_fuse_metadata,value, value_old, last_len, 
+            #                                  "/home/comp/csstchen/CacheBlend/value_diff_plots", 
+            #                                  f"layer_{cache_fuse_metadata.get('layer_idx', 'unknown')}")
+            top_indices = torch.topk(temp_diff, k=topk_num).indices
+            
+            top_indices, _ = torch.sort(top_indices)
+            top_indices = torch.cat([top_indices,
+                                        torch.tensor(last_indices, device=top_indices.device)])
+            query = query[top_indices]
+            cache_fuse_metadata["imp_indices"] = top_indices
+            
+            #attn_bias = _make_partial_bias_gqa(cache_fuse_metadata, query.device, self.num_kv_heads, self.num_queries_per_kv)
+            attn_bias = LowerTriangularFromBottomRightMask()
+            cache_fuse_metadata["attn_bias"] = attn_bias
+            attn_metadata.prefill_metadata.attn_bias=None
+            
+        #if status in [0] and cache_fuse_metadata["original_slot_mapping"]==None and cache_fuse_metadata['check']:
+        #    cache_fuse_metadata["original_slot_mapping"] = attn_metadata.slot_mapping#.clone()
+        #    cache_fuse_metadata["key_shape"] = key.shape
+        #    cache_fuse_metadata["value_shape"] = value.shape
+        #    cache_fuse_metadata["kv_cache_string_dtype"] = "auto"
+        cache_fuse_metadata["kv_cache_dtype"] = value.dtype
+        
+        # Jiayi: whether partial update or full update at check layer
+        if status in [1]:
+            imp_indices = cache_fuse_metadata["imp_indices"]
+            #key_old[imp_indices] = key[imp_indices]
+            #value_old[imp_indices] = value[imp_indices]
+            #key = key_old
+            #value = value_old
+            
+        
+        if status in [2]:
+            imp_indices = cache_fuse_metadata["imp_indices"]
+            key_old[imp_indices] = key 
+            value_old[imp_indices] = value
+            key = key_old
+            value = value_old
         # Self-attention vs. cross-attention will impact
         # which KV cache memory-mapping & which
         # seqlen datastructures we utilize
@@ -533,21 +585,37 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                 PagedAttention.write_to_paged_cache(
                     key, value, key_cache, value_cache, updated_slot_mapping,
                     self.kv_cache_dtype, layer._k_scale, layer._v_scale)
-        (num_prefill_query_tokens, num_prefill_kv_tokens,
-        num_decode_query_tokens) = \
-            get_num_prefill_decode_query_kv_tokens(attn_metadata, attn_type)
+        if status in [1,2]:
+            (num_prefill_query_tokens, num_prefill_kv_tokens,
+            num_decode_query_tokens) = \
+                get_num_prefill_decode_query_kv_tokens(attn_metadata, attn_type)
 
-        output = torch.empty_like(query)
-        # Query for decode. KV is not needed because it is already cached.
-        decode_query = query[num_prefill_query_tokens:]
-        # QKV for prefill.
-        query = query[:num_prefill_query_tokens]
-        if key is not None and value is not None:
-            key = key[:num_prefill_kv_tokens]
-            value = value[:num_prefill_kv_tokens]
+            output = torch.empty_like(query)
+            # Query for decode. KV is not needed because it is already cached.
+            decode_query = None
+            # QKV for prefill.
+            query = query
+            if key is not None and value is not None:
+                key = key[:num_prefill_kv_tokens]
+                value = value[:num_prefill_kv_tokens]
+            
+            assert query.shape[0] == len(cache_fuse_metadata["imp_indices"])
+        else:
+            (num_prefill_query_tokens, num_prefill_kv_tokens,
+            num_decode_query_tokens) = \
+                get_num_prefill_decode_query_kv_tokens(attn_metadata, attn_type)
 
-        assert query.shape[0] == num_prefill_query_tokens
-        assert decode_query.shape[0] == num_decode_query_tokens
+            output = torch.empty_like(query)
+            # Query for decode. KV is not needed because it is already cached.
+            decode_query = query[num_prefill_query_tokens:]
+            # QKV for prefill.
+            query = query[:num_prefill_query_tokens]
+            if key is not None and value is not None:
+                key = key[:num_prefill_kv_tokens]
+                value = value[:num_prefill_kv_tokens]
+
+            assert query.shape[0] == num_prefill_query_tokens
+            assert decode_query.shape[0] == num_decode_query_tokens
 
         if prefill_meta := attn_metadata.prefill_metadata:
             # Prompt run.
@@ -792,3 +860,81 @@ def _make_alibi_bias(
         attn_biases.append(LowerTriangularMaskWithTensorBias(bias))
 
     return attn_biases
+
+
+def visualize_value_diff(cache_fuse_metadata, value, value_old, last_len, output_dir, prefix=""):
+    """
+    计算并可视化value和value_old之间的差异
+    
+    Args:
+        cache_fuse_metadata: 缓存融合元数据，包含chunk_start信息
+        value: 当前value张量
+        value_old: 旧的value张量
+        last_len: 要排除的尾部长度
+        output_dir: 输出目录
+        prefix: 文件名前缀
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+    import time
+    
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 计算每个token位置的差异
+    temp_diff = torch.sum((value[:-last_len,:,:]-value_old[:-last_len,:,:])**2, dim=[1,2])
+    
+    # 转换为numpy数组前先转为float32类型以解决BFloat16兼容性问题
+    diff_np = temp_diff.detach().cpu().float().numpy()  # 添加.float()转换
+    token_indices = np.arange(len(diff_np))
+    
+    # 创建图表
+    plt.figure(figsize=(12, 6))
+    
+    # 绘制线图
+    plt.subplot(1, 2, 1)
+    plt.plot(token_indices, diff_np)
+    
+    # 设置只显示chunk_start中的标记点
+    if "chunk_start" in cache_fuse_metadata and len(cache_fuse_metadata["chunk_start"]) > 0:
+        chunk_starts = cache_fuse_metadata["chunk_start"]
+        # 只保留在有效范围内的chunk_start值
+        valid_chunk_starts = [cs for cs in chunk_starts if cs < len(diff_np)]
+        
+        if valid_chunk_starts:
+            plt.xticks(valid_chunk_starts)
+            
+            # 添加垂直虚线标记chunk_start位置
+            for cs in valid_chunk_starts:
+                plt.axvline(x=cs, color='r', linestyle='--', alpha=0.5)
+    
+    plt.title('Value Differences by Token Position')
+    plt.xlabel('Token Position')
+    plt.ylabel('Squared L2 Distance')
+    plt.grid(True)
+    
+    # 绘制直方图
+    plt.subplot(1, 2, 2)
+    plt.hist(diff_np, bins=50)
+    plt.title('Distribution of Value Differences')
+    plt.xlabel('Squared L2 Distance')
+    plt.ylabel('Frequency')
+    plt.grid(True)
+    
+    # 保存图表
+    timestamp = int(time.time())
+    filename = f"{prefix}_value_diff_{timestamp}.png"
+    filepath = os.path.join(output_dir, filename)
+    plt.tight_layout()
+    plt.savefig(filepath)
+    plt.close()
+    
+    print(f"Visualization saved to: {filepath}")
+    
+    # 保存原始数据以便进一步分析
+    data_filename = f"{prefix}_value_diff_data_{timestamp}.npy"
+    data_filepath = os.path.join(output_dir, data_filename)
+    np.save(data_filepath, diff_np)
+    
+    return temp_diff

@@ -192,6 +192,7 @@ class LlamaAttention(nn.Module):
             per_layer_sliding_window=sliding_window,
             prefix=f"{prefix}.attn",
         )
+        self.hack_kv = []
 
     def forward(
         self,
@@ -199,11 +200,34 @@ class LlamaAttention(nn.Module):
         hidden_states: torch.Tensor,
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
+
+        status,
+        cache_fuse_metadata,
+        old_kv,
     ) -> torch.Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
+        # print(f"qkv: {qkv.shape[0]}")
+        # print(f"qkv: {qkv.shape}")
+        # qkv: [batch_size, seq_len, 3 * hidden_size]
+        # qkv: [batch_size, seq_len, 3 * num_heads * head_dim]
+        # qkv: [batch_size, seq_len, 3 * total_num_heads * head_dim]
+        # qkv: [batch_size, seq_len, 3 * total_num_kv_heads * head_dim]
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+        # print(f"q: {q.shape}")
+        # print(f"k: {k.shape}")
+        # print(f"v: {v.shape}")
+        if status in [1,2]:
+            if cache_fuse_metadata["fake_q"] is None:
+                cache_fuse_metadata['fake_q'] = torch.rand_like(q)
+            _, old_kv[0] = self.rotary_emb(cache_fuse_metadata['org_pos'],
+                                        cache_fuse_metadata['fake_q'],
+                                        old_kv[0])
+            
+        if cache_fuse_metadata['collect']:
+            self.hack_kv = [k.clone(), v.clone()]
         q, k = self.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        attn_output = self.attn(q, k, v, kv_cache, attn_metadata,
+                                status, cache_fuse_metadata, old_kv)
         output, _ = self.o_proj(attn_output)
         return output
 
@@ -271,6 +295,10 @@ class LlamaDecoderLayer(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
         residual: Optional[torch.Tensor],
+
+        status: int,
+        cache_fuse_metadata: dict,
+        old_kv,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Self Attention
         if residual is None:
@@ -279,10 +307,17 @@ class LlamaDecoderLayer(nn.Module):
         else:
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
-        hidden_states = self.self_attn(positions=positions,
-                                       hidden_states=hidden_states,
-                                       kv_cache=kv_cache,
-                                       attn_metadata=attn_metadata)
+        hidden_states = self.self_attn(
+                                        positions=positions,
+                                        hidden_states=hidden_states,
+                                        kv_cache=kv_cache,
+                                        attn_metadata=attn_metadata,
+                                        status=status,
+                                        cache_fuse_metadata=cache_fuse_metadata,
+                                        old_kv=old_kv,
+                                       )
+        if status == 1:
+            residual = residual[cache_fuse_metadata["imp_indices"]]
 
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(
@@ -339,6 +374,23 @@ class LlamaModel(nn.Module):
         self.make_empty_intermediate_tensors = (
             make_empty_intermediate_tensors_factory(
                 ["hidden_states", "residual"], config.hidden_size))
+        
+        self.cache_fuse_metadata = {"check_layers":[1],
+                                    "check": False,
+                                    "recomp_ratios":[0.16],
+                                    "recomp_ratio":0.16,
+                                    "original_slot_mapping":None,
+                                    "our_slot_mapping":None,
+                                    "kv_cache_dtype": None,
+                                    "attn_bias": None,
+                                    "imp_indices": None,
+                                    "org_seq_len": None,
+                                    "collect": False,
+                                    "chunk_start":[0]
+                                    }
+        
+        self.old_kvs = [[None,None]] * len(self.layers)
+
 
     def get_input_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embed_tokens(input_ids)
@@ -357,6 +409,23 @@ class LlamaModel(nn.Module):
                 hidden_states = inputs_embeds
             else:
                 hidden_states = self.get_input_embeddings(input_ids)
+                # print(f"input_ids: {input_ids.shape}")
+                # print(f"hidden_states: {hidden_states.shape}")
+            if attn_metadata.prefill_metadata:
+                temp_status = 0 # full prefill
+                if self.cache_fuse_metadata["check"]:
+                    self.cache_fuse_metadata["org_seq_len"] = input_ids.shape[0] 
+                    check_layer_idx = 0
+                    self.cache_fuse_metadata["fake_q"] = None  
+                    self.cache_fuse_metadata["attn_bias"] = None
+                    self.cache_fuse_metadata["imp_indices"] = None
+                    self.cache_fuse_metadata["original_slot_mapping"] = None
+                    self.cache_fuse_metadata["our_slot_mapping"] = None
+                    self.cache_fuse_metadata['org_pos'] = positions[:]
+                #FIXME(Jiayi): fix this clone for faster time (Is this still needed?)
+                #self.cache_fuse_metadata["our_slot_mapping"] = input_metadata.slot_mapping.clone()
+            else:
+                temp_status = -1 # decode
             residual = None
         else:
             assert intermediate_tensors is not None
@@ -364,10 +433,28 @@ class LlamaModel(nn.Module):
             residual = intermediate_tensors["residual"]
 
         for i in range(self.start_layer, self.end_layer):
+            if self.cache_fuse_metadata["check"]:
+                if i in self.cache_fuse_metadata["check_layers"]:
+                    temp_status = 1 # check this layer
+                    self.cache_fuse_metadata["check_layer"] = self.cache_fuse_metadata["check_layers"][check_layer_idx]
+                    check_layer_idx += 1
+                elif i > self.cache_fuse_metadata["check_layers"][0]:
+                    temp_status = 2 # after check
+            
+            old_kv = self.old_kvs[i]
+
             layer = self.layers[i]
             hidden_states, residual = layer(positions, hidden_states,
                                             kv_caches[i - self.start_layer],
-                                            attn_metadata, residual)
+                                            attn_metadata, residual,
+                                            status = temp_status,
+                                            cache_fuse_metadata=self.cache_fuse_metadata,
+                                            old_kv=old_kv
+                                        )
+            if temp_status==1:
+                #import pdb
+                #pdb.set_trace()
+                positions = positions[self.cache_fuse_metadata["imp_indices"]]
 
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
@@ -376,6 +463,10 @@ class LlamaModel(nn.Module):
             })
 
         hidden_states, _ = self.norm(hidden_states, residual)
+        if self.cache_fuse_metadata["collect"]:
+            temp_chunk_start = self.cache_fuse_metadata["chunk_start"][-1]+input_ids.shape[0]-1
+            self.cache_fuse_metadata["chunk_start"].append(temp_chunk_start)
+            print(f"chunk_start: {self.cache_fuse_metadata['chunk_start']}")
         return hidden_states
 
     def load_weights(self, weights: Iterable[Tuple[str,
