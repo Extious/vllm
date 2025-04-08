@@ -7,7 +7,8 @@ from xformers import ops as xops
 from xformers.ops.fmha.attn_bias import (AttentionBias,
                                          BlockDiagonalCausalMask,
                                          BlockDiagonalMask,
-                                         LowerTriangularMaskWithTensorBias)
+                                         LowerTriangularMaskWithTensorBias,
+                                         LowerTriangularFromBottomRightMask)
 
 from vllm.attention.backends.abstract import (AttentionBackend, AttentionImpl,
                                               AttentionMetadata, AttentionType)
@@ -447,9 +448,13 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         value: Optional[torch.Tensor],
         kv_cache: Optional[torch.Tensor],
         attn_metadata: "XFormersMetadata",
-        k_scale: float = 1.0,
-        v_scale: float = 1.0,
-        attn_type: AttentionType = AttentionType.DECODER,
+        k_scale: float,
+        v_scale: float,
+        attn_type: AttentionType.DECODER,
+
+        status,
+        cache_metadata:dict,
+        old_kv,
     ) -> torch.Tensor:
         """Forward pass with xFormers and PagedAttention.
 
@@ -517,7 +522,28 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             value = value.view(-1, self.num_kv_heads, self.head_size)
         else:
             assert value is None
+        # print(f"query shape: {query.shape}, key shape: {key.shape}, value shape: {value.shape}")
 
+        if cache_metadata["check"]:
+            key_old = old_kv[0].view(-1, self.num_kv_heads, self.head_size)
+            # print(f"key_old shape: {key_old.shape}")
+            value_old = old_kv[1].view(-1, self.num_kv_heads, self.head_size)
+            # print(f"value_old shape: {value_old.shape}")
+        if cache_metadata["check"] and status == 0:
+            imp_indices = cache_metadata["imp_indices"]
+            query = query[imp_indices]
+        if cache_metadata["check"] and status == 1:
+            attn_bias = LowerTriangularFromBottomRightMask()
+            cache_metadata["attn_bias"] = attn_bias
+            imp_indices = cache_metadata["imp_indices"]
+            assert key.shape[0] == len(imp_indices)
+            key_old[imp_indices] = key 
+            assert value.shape[0] == len(imp_indices)
+            value_old[imp_indices] = value
+            key = key_old
+            # print(f"key shape: {key.shape}")
+            value = value_old
+            # print(f"value shape: {value.shape}")
         # Self-attention vs. cross-attention will impact
         # which KV cache memory-mapping & which
         # seqlen datastructures we utilize
@@ -553,38 +579,51 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                                                     updated_slot_mapping,
                                                     self.kv_cache_dtype,
                                                     k_scale, v_scale)
-
-        if attn_type != AttentionType.ENCODER:
-            # Decoder self-attention supports chunked prefill.
-            # Encoder/decoder cross-attention requires no chunked
-            # prefill (100% prefill or 100% decode tokens, no mix)
+        
+        if cache_metadata["check"]:
             num_prefill_tokens = attn_metadata.num_prefill_tokens
             num_decode_tokens = attn_metadata.num_decode_tokens
-        else:
-            # Encoder attention - chunked prefill is not applicable;
-            # derive token-count from query shape & and treat them
-            # as 100% prefill tokens
-            assert attn_metadata.num_encoder_tokens is not None
-            num_prefill_tokens = attn_metadata.num_encoder_tokens
-            num_decode_tokens = 0
-
-        if attn_type == AttentionType.DECODER:
-            # Only enforce this shape-constraint for decoder
-            # self-attention
-            assert key.shape[0] == num_prefill_tokens + num_decode_tokens
-            assert value.shape[0] == num_prefill_tokens + num_decode_tokens
-
-        output = torch.empty_like(query)
-        # Query for decode. KV is not needed because it is already cached.
-        decode_query = query[num_prefill_tokens:]
-        # QKV for prefill.
-        query = query[:num_prefill_tokens]
-        if key is not None and value is not None:
+            output = torch.empty_like(query)
+            decode_query = None
+            query = query
+            # print(f"query shape: {query.shape}")
             key = key[:num_prefill_tokens]
+            # print(f"key shape: {key.shape}")
             value = value[:num_prefill_tokens]
+            # print(f"value shape: {value.shape}")
+            assert query.shape[0] == len(cache_metadata["imp_indices"])
+        else:
+            if attn_type != AttentionType.ENCODER:
+                # Decoder self-attention supports chunked prefill.
+                # Encoder/decoder cross-attention requires no chunked
+                # prefill (100% prefill or 100% decode tokens, no mix)
+                num_prefill_tokens = attn_metadata.num_prefill_tokens
+                num_decode_tokens = attn_metadata.num_decode_tokens
+            else:
+                # Encoder attention - chunked prefill is not applicable;
+                # derive token-count from query shape & and treat them
+                # as 100% prefill tokens
+                assert attn_metadata.num_encoder_tokens is not None
+                num_prefill_tokens = attn_metadata.num_encoder_tokens
+                num_decode_tokens = 0
 
-        assert query.shape[0] == num_prefill_tokens
-        assert decode_query.shape[0] == num_decode_tokens
+            if attn_type == AttentionType.DECODER:
+                # Only enforce this shape-constraint for decoder
+                # self-attention
+                assert key.shape[0] == num_prefill_tokens + num_decode_tokens
+                assert value.shape[0] == num_prefill_tokens + num_decode_tokens
+
+                output = torch.empty_like(query)
+                # Query for decode. KV is not needed because it is already cached.
+                decode_query = query[num_prefill_tokens:]
+                # QKV for prefill.
+                query = query[:num_prefill_tokens]
+                if key is not None and value is not None:
+                    key = key[:num_prefill_tokens]
+                    value = value[:num_prefill_tokens]
+
+                assert query.shape[0] == num_prefill_tokens
+                assert decode_query.shape[0] == num_decode_tokens
 
         if prefill_meta := attn_metadata.prefill_metadata:
             # Prompt run.
@@ -593,9 +632,10 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                 # block tables are empty if the prompt does not have a cached
                 # prefix.
                 out = self._run_memory_efficient_xformers_forward(
-                    query, key, value, prefill_meta, attn_type=attn_type)
+                    query, key, value, prefill_meta, attn_type, cache_metadata)
                 assert out.shape == output[:num_prefill_tokens].shape
                 output[:num_prefill_tokens] = out
+                # print(f"output shape: {output.shape}")
             else:
 
                 assert prefill_meta.query_start_loc is not None
@@ -657,7 +697,9 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         key: torch.Tensor,
         value: torch.Tensor,
         attn_metadata: XFormersMetadata,
-        attn_type: AttentionType = AttentionType.DECODER,
+        attn_type: AttentionType.DECODER,
+
+        cache_metadata: dict,
     ) -> torch.Tensor:
         """Attention for 1D query of multiple prompts. Multiple prompt
         tokens are flattened in to `query` input.
@@ -736,13 +778,22 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             query = query.unsqueeze(0)
             key = key.unsqueeze(0)
             value = value.unsqueeze(0)
-            out = xops.memory_efficient_attention_forward(
-                query,
-                key,
-                value,
-                attn_bias=attn_bias[0],
-                p=0.0,
-                scale=self.scale)
+            if cache_metadata["check"]:
+                out = xops.memory_efficient_attention_forward(
+                    query,
+                    key,
+                    value,
+                    attn_bias=cache_metadata["attn_bias"],
+                    p=0.0,
+                    scale=self.scale)
+            else:
+                out = xops.memory_efficient_attention_forward(
+                    query,
+                    key,
+                    value,
+                    attn_bias=attn_bias[0],
+                    p=0.0,
+                    scale=self.scale)
             return out.view_as(original_query)
 
         # Attention with alibi slopes.

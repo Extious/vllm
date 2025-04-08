@@ -54,6 +54,8 @@ from vllm.utils import is_hip
 from .interfaces import SupportsLoRA
 from .utils import PPMissingLayer, is_pp_missing_parameter, make_layers
 
+from vllm.attention import AttentionType
+
 
 class LlamaMLP(nn.Module):
 
@@ -131,6 +133,8 @@ class LlamaAttention(nn.Module):
         self.rope_theta = rope_theta
         self.max_position_embeddings = max_position_embeddings
 
+        self.attn_type = AttentionType.DECODER
+
         self.qkv_proj = QKVParallelLinear(
             hidden_size=hidden_size,
             head_size=self.head_dim,
@@ -167,6 +171,7 @@ class LlamaAttention(nn.Module):
                               num_kv_heads=self.num_kv_heads,
                               cache_config=cache_config,
                               quant_config=quant_config)
+        self.hack_kv = []
 
     def forward(
         self,
@@ -174,12 +179,34 @@ class LlamaAttention(nn.Module):
         hidden_states: torch.Tensor,
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
+
+        status: int,
+        cache_metadata: dict,
+        old_kv,
     ) -> torch.Tensor:
         qkv, _ = self.qkv_proj(hidden_states)
+        # print(f"qkv: {qkv.shape}")
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+        # print(f"q: {q.shape}")
+        # print(f"k: {k.shape}")
+        # print(f"v: {v.shape}")
+        if cache_metadata["check"]:
+            if cache_metadata["fake_q"] is None:
+                cache_metadata["fake_q"] = torch.rand_like(q)
+            _,old_kv[0] = self.rotary_emb(cache_metadata["org_pos"],
+                                          cache_metadata["fake_q"],
+                                          old_kv[0])
+        if cache_metadata["collect"]:
+            self.hack_kv = [k.clone(), v.clone()]
         q, k = self.rotary_emb(positions, q, k)
-        attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        # print(f"q: {q.shape}")
+        # print(f"k: {k.shape}")
+        attn_output = self.attn(q, k, v, kv_cache, attn_metadata,
+                                status, cache_metadata, old_kv,
+                                self.attn_type)
+        # print(f"attn_output: {attn_output.shape}")
         output, _ = self.o_proj(attn_output)
+        # print(f"output: {output.shape}")
         return output
 
 
@@ -240,11 +267,16 @@ class LlamaDecoderLayer(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
         residual: Optional[torch.Tensor],
+
+        status: int,
+        cache_metadata: dict,
+        old_kv,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Self Attention
         if residual is None:
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
+            # print(f"hidden_states: {hidden_states.shape}")
         else:
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
@@ -253,9 +285,13 @@ class LlamaDecoderLayer(nn.Module):
             hidden_states=hidden_states,
             kv_cache=kv_cache,
             attn_metadata=attn_metadata,
-        )
 
-        # Fully Connected
+            status=status,
+            cache_metadata=cache_metadata,
+            old_kv=old_kv,
+        )
+        if cache_metadata["check"] and status == 0:
+            residual = residual[cache_metadata["imp_indices"]]
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
         hidden_states = self.mlp(hidden_states)
@@ -300,6 +336,13 @@ class LlamaModel(nn.Module):
             self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         else:
             self.norm = PPMissingLayer()
+        self.cache_metadata = {
+            "collect":False,
+            "check":False,
+            "imp_indices": None,
+            "org_sequence_length": None,
+        }
+        self.old_kvs = [[None,None]]*len(self.layers)
 
     def get_input_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embed_tokens(input_ids)
@@ -324,7 +367,20 @@ class LlamaModel(nn.Module):
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
 
+        if attn_metadata.prefill_metadata:
+            if self.cache_metadata["check"]:
+                self.cache_metadata["org_sequence_length"]=input_ids.shape[0]
+                self.cache_metadata["fake_q"]=None
+                self.cache_metadata["attn_bias"] = None
+                self.cache_metadata["org_pos"] = positions[:]
+
         for i in range(self.start_layer, self.end_layer):
+            # print(f"layer {i}")
+            if i > 0:
+                status = 1
+            else:
+                status = 0
+            old_kv = self.old_kvs[i]
             layer = self.layers[i]
             hidden_states, residual = layer(
                 positions,
@@ -332,7 +388,13 @@ class LlamaModel(nn.Module):
                 kv_caches[i - self.start_layer],
                 attn_metadata,
                 residual,
+
+                status=status,
+                cache_metadata=self.cache_metadata,
+                old_kv=old_kv,
             )
+            if self.cache_metadata["check"] and status == 0:
+                positions = positions[self.cache_metadata["imp_indices"]]
 
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
@@ -341,6 +403,7 @@ class LlamaModel(nn.Module):
             })
 
         hidden_states, _ = self.norm(hidden_states, residual)
+        # print(f"hidden_states: {hidden_states.shape}")
         return hidden_states
 
 

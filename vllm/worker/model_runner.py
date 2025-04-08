@@ -1573,7 +1573,14 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     torch.tensor(model_forward_time + orig_model_forward_time))
             return hidden_or_intermediate_states
 
-        logits = self.model.compute_logits(hidden_or_intermediate_states,
+        if self.model.model.cache_metadata["check"]:
+            temp_data = model_input.sampling_metadata.selected_token_indices.clone()
+            model_input.sampling_metadata.selected_token_indices[0] = hidden_or_intermediate_states.shape[0]-1
+            self.model.model.cache_metadata['check'] = False
+            logits = self.model.compute_logits(hidden_or_intermediate_states, model_input.sampling_metadata)
+            model_input.sampling_metadata.selected_token_indices = temp_data
+        else:
+            logits = self.model.compute_logits(hidden_or_intermediate_states,
                                            model_input.sampling_metadata)
 
         if not self.is_driver_worker:
