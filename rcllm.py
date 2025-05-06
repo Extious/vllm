@@ -8,7 +8,7 @@ import json
 from transformers import AutoTokenizer
 
 # Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95,max_model_len=10000)
+llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.5,max_model_len=10000)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
 llm.set_tokenizer(tokenizer)
 

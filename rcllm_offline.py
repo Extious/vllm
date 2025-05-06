@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
 from vllm import LLM, SamplingParams
 import torch
@@ -8,7 +8,7 @@ import json
 from transformers import AutoTokenizer
 
 # Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
+llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.6)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
 llm.set_tokenizer(tokenizer)
 
@@ -651,7 +651,7 @@ def generate_recommendation_with_cacheblend(user_id):
 
 if __name__ == "__main__":
     # 只处理指定用户
-    test_user_id = "user_A1A0PPF8HE508X"
+    test_user_id = "user_A1A5YE7K0WHN2T"
     print(f"\n===== 为用户 {test_user_id} 生成推荐 =====")
     try:
         recommendation = generate_recommendation_with_cacheblend(test_user_id)
