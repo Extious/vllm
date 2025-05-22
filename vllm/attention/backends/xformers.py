@@ -1,6 +1,6 @@
 """Attention layer with xFormers and PagedAttention."""
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 from xformers import ops as xops
@@ -17,6 +17,8 @@ from vllm.attention.backends.utils import (CommonAttentionState,
 from vllm.attention.ops.paged_attn import (PagedAttention,
                                            PagedAttentionMetadata)
 from vllm.logger import init_logger
+import matplotlib.pyplot as plt
+import os
 
 logger = init_logger(__name__)
 
@@ -332,10 +334,10 @@ def _get_seq_len_block_table_args(
     on the type of attention operation.
 
     Decoder attn -> select entirely decoder self-attention-related fields
-    Encoder/decoder cross-attn -> select encoder sequence lengths & 
+    Encoder/decoder cross-attn -> select encoder sequence lengths &
                                   cross-attn block-tables fields
     Encoder attn -> select encoder sequence lengths fields & no block tables
-    
+
     Arguments:
 
     * attn_metadata: Attention metadata structure associated with attention op
@@ -381,11 +383,11 @@ class XFormersMetadataBuilder(CommonMetadataBuilder[XFormersMetadata]):
 class XFormersImpl(AttentionImpl[XFormersMetadata]):
     """
     If the input tensors contain prompt tokens, the layout is as follows:
-    |<--------------- num_prefill_tokens ----------------->|	
+    |<--------------- num_prefill_tokens ----------------->|
     |<--prefill_0-->|<--prefill_1-->|...|<--prefill_N-1--->|
 
-    Otherwise, the layout is as follows:	
-    |<----------------- num_decode_tokens ------------------>|	
+    Otherwise, the layout is as follows:
+    |<----------------- num_decode_tokens ------------------>|
     |<--decode_0-->|..........|<--decode_M-1-->|<--padding-->|
 
     Generation tokens can contain padding when cuda-graph is used.
@@ -455,7 +457,8 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         status,
         cache_metadata:dict,
         old_kv,
-    ) -> torch.Tensor:
+        return_attn_weights: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Forward pass with xFormers and PagedAttention.
 
         For decoder-only models: query, key and value must be non-None.
@@ -472,10 +475,10 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
               (1) key and value tensors were cached during prefill, and
               (2) cross-attention key and value tensors do not grow during
                   decode
-        
+
         A note on how the attn_type (attention type enum) argument impacts
         attention forward() behavior:
-    
+
             * DECODER: normal decoder-only behavior;
                 use decoder self-attention block table
             * ENCODER: no KV caching; pass encoder sequence
@@ -488,7 +491,7 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                 will match encoder sequence lengths, pass encoder sequence
                 attributes to kernel (encoder_seq_lens/encoder_seq_lens_tensor/
                 max_encoder_seq_len)
-    
+
         Args:
             query: shape = [num_tokens, num_heads * head_size]
             key: shape = [num_tokens, num_kv_heads * head_size]
@@ -500,7 +503,11 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                        attention. Defaults to decoder self-attention,
                        which is the vLLM default generally
         Returns:
-            shape = [num_tokens, num_heads * head_size]
+            如果 return_attn_weights=False:
+                shape = [num_tokens, num_heads * head_size]
+            如果 return_attn_weights=True:
+                Tuple[torch.Tensor, torch.Tensor]，其中第一个张量是输出，
+                第二个张量是注意力权重，shape = [num_heads, seq_len_q, seq_len_k]
         """
 
         # Check that appropriate attention metadata attributes are
@@ -532,12 +539,81 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         if cache_metadata["check"] and status == 0:
             imp_indices = cache_metadata["imp_indices"]
             query = query[imp_indices]
-        if cache_metadata["check"] and status == 1:
-            attn_bias = LowerTriangularFromBottomRightMask()
+            # attn_bias = LowerTriangularFromBottomRightMask()
+            attn_bias = _make_partial_bias_gqa(cache_metadata, query.device, self.num_kv_heads, self.num_queries_per_kv)
             cache_metadata["attn_bias"] = attn_bias
+        if cache_metadata["check"] and status == 1:
             imp_indices = cache_metadata["imp_indices"]
             assert key.shape[0] == len(imp_indices)
-            key_old[imp_indices] = key 
+            # 计算差异并可视化
+            # key, value: [num_tokens, num_kv_heads, head_size]
+            # key_old, value_old: [num_tokens, num_kv_heads, head_size]
+            # imp_indices: 需要更新的位置
+            # 假设每一层调用一次此forward，层号可通过cache_metadata["layer_id"]传入
+            # layer_id = cache_metadata.get("layer_id", 0)
+            # # 只对imp_indices位置进行可视化
+            # prefix_len = cache_metadata.get('prefix_len', 0)
+            # key_diff = (key.detach().cpu() - key_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
+            # value_diff = (value.detach().cpu() - value_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
+            # # 只画出prefix_len之后的token位置
+            # if key_diff.shape[0] > prefix_len:
+            #     plot_key_diff = key_diff[prefix_len:]
+            #     plot_value_diff = value_diff[prefix_len:]
+            #     plot_indices = range(prefix_len, key_diff.shape[0])
+            # else:
+            #     plot_key_diff = key_diff
+            #     plot_value_diff = value_diff
+            #     plot_indices = range(key_diff.shape[0])
+
+            # # ===== 新增：记录差异最大的50%位置 =====
+            # # 只考虑prefix_len之后的token
+            # if plot_key_diff.shape[0] > 0:
+            #     # 取key和value的均值（可选：也可以只用key或value）
+            #     mean_diff = (plot_key_diff.mean(dim=1) + plot_value_diff.mean(dim=1)) / 2  # [num_plot_tokens]
+            #     num_top = max(1, int(len(mean_diff) * 0.9))
+            #     top_indices = mean_diff.topk(num_top).indices.cpu().numpy()
+            #     # 这些是相对plot_indices的下标，需转为全局token位置
+            #     top_positions = [plot_indices[i] for i in top_indices]
+            #     # 用一个全局集合存储所有层所有head的top位置
+            #     save_dir = "./attn_diff_vis"
+            #     global_top_positions_file = os.path.join(save_dir, 'global_top_diff_positions_90.txt')
+            #     # 用set去重
+            #     if not hasattr(self, '_global_top_positions'):
+            #         self._global_top_positions = set()
+            #     for pos in top_positions:
+            #         self._global_top_positions.add(int(pos))
+            #     # 每层都写一次，最后会是全集合
+            #     with open(global_top_positions_file, 'w') as f:
+            #         for pos in sorted(self._global_top_positions):
+            #             f.write(f"{pos}\n")
+            # # ===== 新增结束 =====
+            # # 画图，每个头一条曲线，横坐标为token位置
+            # save_dir = "./attn_diff_vis"
+            # os.makedirs(save_dir, exist_ok=True)
+            # # key
+            # plt.figure(figsize=(12, 6))
+            # for h in range(plot_key_diff.shape[1]):
+            #     plt.plot(plot_indices, plot_key_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
+            # plt.xlabel("Token Position (imp_indices)")
+            # plt.ylabel("Key Diff (mean abs)")
+            # plt.title(f"Layer {layer_id} Key Diff Per Head (pos >= {prefix_len})")
+            # plt.legend(fontsize=6, ncol=4)
+            # plt.tight_layout()
+            # plt.savefig(os.path.join(save_dir, f"layer{layer_id}_key_diff.png"))
+            # plt.close()
+            # # value
+            # plt.figure(figsize=(12, 6))
+            # for h in range(plot_value_diff.shape[1]):
+            #     plt.plot(plot_indices, plot_value_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
+            # plt.xlabel("Token Position (imp_indices)")
+            # plt.ylabel("Value Diff (mean abs)")
+            # plt.title(f"Layer {layer_id} Value Diff Per Head (pos >= {prefix_len})")
+            # plt.legend(fontsize=6, ncol=4)
+            # plt.tight_layout()
+            # plt.savefig(os.path.join(save_dir, f"layer{layer_id}_value_diff.png"))
+            # plt.close()
+            
+            key_old[imp_indices] = key
             assert value.shape[0] == len(imp_indices)
             value_old[imp_indices] = value
             key = key_old
@@ -547,6 +623,8 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
         # Self-attention vs. cross-attention will impact
         # which KV cache memory-mapping & which
         # seqlen datastructures we utilize
+
+        cache_metadata["kv_cache_dtype"] = value.dtype
 
         if (attn_type != AttentionType.ENCODER and kv_cache is not None):
             # KV-cache during decoder-self- or
@@ -579,7 +657,7 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                                                     updated_slot_mapping,
                                                     self.kv_cache_dtype,
                                                     k_scale, v_scale)
-        
+
         if cache_metadata["check"]:
             num_prefill_tokens = attn_metadata.num_prefill_tokens
             num_decode_tokens = attn_metadata.num_decode_tokens
@@ -625,17 +703,29 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
                 assert query.shape[0] == num_prefill_tokens
                 assert decode_query.shape[0] == num_decode_tokens
 
+        # 创建一个变量来存储注意力权重
+        attention_weights = None
+
         if prefill_meta := attn_metadata.prefill_metadata:
             # Prompt run.
             if kv_cache is None or prefill_meta.block_tables.numel() == 0:
                 # normal attention.
                 # block tables are empty if the prompt does not have a cached
                 # prefix.
-                out = self._run_memory_efficient_xformers_forward(
-                    query, key, value, prefill_meta, attn_type, cache_metadata)
-                assert out.shape == output[:num_prefill_tokens].shape
-                output[:num_prefill_tokens] = out
-                # print(f"output shape: {output.shape}")
+                if return_attn_weights:
+                    # 调用支持返回注意力权重的函数
+                    out, weights = self._run_memory_efficient_xformers_forward_with_weights(
+                        query, key, value, prefill_meta, attn_type, cache_metadata)
+                    assert out.shape == output[:num_prefill_tokens].shape
+                    output[:num_prefill_tokens] = out
+                    # 存储注意力权重
+                    attention_weights = weights
+                else:
+                    # 原有逻辑
+                    out = self._run_memory_efficient_xformers_forward(
+                        query, key, value, prefill_meta, attn_type, cache_metadata)
+                    assert out.shape == output[:num_prefill_tokens].shape
+                    output[:num_prefill_tokens] = out
             else:
 
                 assert prefill_meta.query_start_loc is not None
@@ -689,7 +779,22 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             )
 
         # Reshape the output tensor.
-        return output.view(-1, self.num_heads * self.head_size)
+        reshaped_output = output.view(-1, self.num_heads * self.head_size)
+
+        # 如果需要返回注意力权重，则返回元组 (output, attn_weights)
+        if return_attn_weights:
+            # 如果我们有存储的注意力权重，则返回它们
+            if attention_weights is not None:
+                return reshaped_output, attention_weights
+            else:
+                # 如果没有存储注意力权重（例如在decode阶段），则返回一个空张量
+                empty_attn_weights = torch.empty((self.num_heads, 0, 0),
+                                               device=output.device,
+                                               dtype=output.dtype)
+                return reshaped_output, empty_attn_weights
+
+        # 否则只返回输出
+        return reshaped_output
 
     def _run_memory_efficient_xformers_forward(
         self,
@@ -817,6 +922,271 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             start += seq_len
         return output
 
+    def _run_memory_efficient_xformers_forward_with_weights(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_metadata: XFormersMetadata,
+        attn_type: AttentionType,
+
+        cache_metadata: dict,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """与_run_memory_efficient_xformers_forward类似，但返回注意力权重
+
+        在模型推理时prompt的prefilling阶段，计算每一个token对其前面所有token的注意力密度。
+
+        Args:
+            query: shape = [num_prefill_tokens, num_heads, head_size]
+            key: shape = [num_prefill_tokens, num_kv_heads, head_size]
+            value: shape = [num_prefill_tokens, num_kv_heads, head_size]
+            attn_metadata: Metadata for attention.
+            attn_type: Select attention type.
+            cache_metadata: Cache metadata.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: 输出张量和注意力权重张量
+        """
+        original_query = query
+        if self.num_kv_heads != self.num_heads:
+            # GQA/MQA requires the shape [B, M, G, H, K].
+            # Note that the output also has the same shape (which is different
+            # from a spec from the doc).
+            query = query.view(query.shape[0], self.num_kv_heads,
+                               self.num_queries_per_kv, query.shape[-1])
+            print(f"""query shape: {query.shape}""")
+            key = key[:, :,
+                      None, :].expand(key.shape[0], self.num_kv_heads,
+                                      self.num_queries_per_kv, key.shape[-1])
+            print(f"""key shape: {key.shape}""")
+            value = value[:, :,
+                          None, :].expand(value.shape[0], self.num_kv_heads,
+                                          self.num_queries_per_kv,
+                                          value.shape[-1])
+            print(f"""value shape: {value.shape}""")
+
+        # Set attention bias if not provided. This typically happens at
+        # the very attention layer of every iteration.
+        attn_bias = _get_attn_bias(attn_metadata, attn_type)
+        if attn_bias is None:
+            if self.alibi_slopes is None:
+                if (attn_type == AttentionType.ENCODER_DECODER):
+                    assert attn_metadata.seq_lens is not None
+                    assert attn_metadata.encoder_seq_lens is not None
+
+                    # Default enc/dec cross-attention mask is non-causal
+                    attn_bias = BlockDiagonalMask.from_seqlens(
+                        attn_metadata.seq_lens, attn_metadata.encoder_seq_lens)
+                elif attn_type == AttentionType.ENCODER:
+                    assert attn_metadata.encoder_seq_lens is not None
+
+                    # Default encoder self-attention mask is non-causal
+                    attn_bias = BlockDiagonalMask.from_seqlens(
+                        attn_metadata.encoder_seq_lens)
+                else:
+                    assert attn_metadata.seq_lens is not None
+
+                    # Default decoder self-attention mask is causal
+                    attn_bias = BlockDiagonalCausalMask.from_seqlens(
+                        attn_metadata.seq_lens)
+                if self.sliding_window is not None:
+                    attn_bias = attn_bias.make_local_attention(
+                        self.sliding_window)
+                attn_bias = [attn_bias]
+            else:
+                assert attn_metadata.seq_lens is not None
+                attn_bias = _make_alibi_bias(self.alibi_slopes,
+                                           self.num_kv_heads, query.dtype,
+                                           attn_metadata.seq_lens)
+
+            _set_attn_bias(attn_metadata, attn_bias, attn_type)
+        print(f"""attn_bias: {attn_bias}""")
+
+        # 创建一个变量来存储注意力权重
+        attention_weights_output = None
+
+        # No alibi slopes.
+        if self.alibi_slopes is None:
+            # Add the batch dimension.
+            query = query.unsqueeze(0)
+            key = key.unsqueeze(0)
+            value = value.unsqueeze(0)
+
+            # 计算注意力分数和权重
+            # 由于xformers的AttentionBias对象不能直接调用，我们使用不同的方法
+
+            # 首先计算原始的注意力分数
+            # 在GQA模式下，query和key的形状分别为:
+            # query: [batch_size=1, seq_len, num_kv_heads, num_queries_per_kv, head_size]
+            # key: [batch_size=1, seq_len, num_kv_heads, num_queries_per_kv, head_size]
+
+            # 正确计算注意力分数，考虑到GQA结构
+            # 我们需要得到形状为 [batch_size, num_heads, seq_len, seq_len] 的注意力分数
+
+            # 重新排列维度以便进行批量矩阵乘法
+            # 在GQA模式下，query和key的形状为 [batch=1, seq_len, num_kv_heads, num_queries_per_kv, head_size]
+            # 需要正确处理5维张量
+            q_reshaped = query.permute(0, 2, 3, 1, 4)  # [batch, num_kv_heads, num_queries_per_kv, seq_len, head_size]
+            k_reshaped = key.permute(0, 2, 3, 1, 4)    # [batch, num_kv_heads, num_queries_per_kv, seq_len, head_size]
+
+            # 计算注意力分数
+            attn_scores = torch.matmul(q_reshaped, k_reshaped.transpose(-1, -2)) * self.scale
+            # 现在attn_scores的形状应该是 [batch, num_kv_heads, num_queries_per_kv, seq_len, seq_len]
+            print(f"attn_scores shape after matmul: {attn_scores.shape}")
+
+            # 创建一个掩码矩阵 - 因果掩码（下三角矩阵）
+            seq_len = query.size(1)
+            causal_mask = torch.tril(torch.ones((seq_len, seq_len),
+                                              device=query.device,
+                                              dtype=torch.bool))
+
+            # 将掩码扩展到与注意力分数相同的维度
+            # 对于5维张量，需要正确扩展掩码
+            causal_mask = causal_mask.view(1, 1, 1, seq_len, seq_len).expand_as(attn_scores)
+
+            # 将掩码应用到注意力分数
+            attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
+            print(f"attn_scores shape after masking: {attn_scores.shape}")
+
+            # 应用softmax获取注意力权重
+            attn_weights = torch.softmax(attn_scores, dim=-1)
+            print(f"attn_weights shape after softmax: {attn_weights.shape}")
+
+            # 重新整理注意力权重的形状，使其符合预期的输出格式
+            # 我们需要将形状从 [batch, num_kv_heads, num_queries_per_kv, seq_len, seq_len] 转换为 [num_heads, seq_len, seq_len]
+
+            # 对于GQA，我们已经有了每个Q头的注意力权重，只需要重新整理形状
+            # 从 [batch, num_kv_heads, num_queries_per_kv, seq_len, seq_len] 到 [batch, num_heads, seq_len, seq_len]
+            batch_size, num_kv_heads, num_queries_per_kv, seq_len_q, seq_len_k = attn_weights.shape
+            attn_weights = attn_weights.reshape(batch_size, num_kv_heads * num_queries_per_kv, seq_len_q, seq_len_k)
+
+            # 移除批次维度
+            attention_weights_output = attn_weights.squeeze(0)  # [num_heads, seq_len, seq_len]
+            print(f"attention_weights_output final shape: {attention_weights_output.shape}")
+
+            # 使用xformers的memory_efficient_attention_forward函数计算输出
+            # 这样可以利用xformers的优化
+            if cache_metadata["check"]:
+                out = xops.memory_efficient_attention_forward(
+                    query,
+                    key,
+                    value,
+                    attn_bias=cache_metadata["attn_bias"],
+                    p=0.0,
+                    scale=self.scale)
+            else:
+                out = xops.memory_efficient_attention_forward(
+                    query,
+                    key,
+                    value,
+                    attn_bias=attn_bias[0],
+                    p=0.0,
+                    scale=self.scale)
+            print(f"""out shape: {out.shape}""")
+            return out.view_as(original_query), attention_weights_output
+
+        # Attention with alibi slopes.
+        # Because xformers does not support dynamic sequence lengths with
+        # custom attention bias, we process each prompt one by one.
+        assert attn_metadata.seq_lens is not None
+        output = torch.empty_like(original_query)
+
+        # 创建一个列表来存储每个序列的注意力权重
+        all_attn_weights = []
+
+        start = 0
+        for i, seq_len in enumerate(attn_metadata.seq_lens):
+            end = start + seq_len
+
+            # 计算当前序列的注意力分数
+            q = query[None, start:end]
+            k = key[None, start:end]
+            v = value[None, start:end]
+
+            # 对于alibi slopes情况，我们需要类似的处理
+            # 如果是GQA模式，需要重新排列维度
+            if self.num_kv_heads != self.num_heads:
+                # 重新排列维度以便进行批量矩阵乘法
+                # 在GQA模式下，q和k的形状为 [batch=1, seq_len, num_kv_heads, num_queries_per_kv, head_size]
+                q_reshaped = q.permute(0, 2, 3, 1, 4)  # [batch, num_kv_heads, num_queries_per_kv, seq_len, head_size]
+                k_reshaped = k.permute(0, 2, 3, 1, 4)  # [batch, num_kv_heads, num_queries_per_kv, seq_len, head_size]
+
+                # 计算注意力分数
+                attn_scores = torch.matmul(q_reshaped, k_reshaped.transpose(-1, -2)) * self.scale
+                # 现在attn_scores的形状应该是 [batch, num_kv_heads, num_queries_per_kv, seq_len, seq_len]
+
+                # 创建因果掩码
+                seq_len = q.size(1)
+                causal_mask = torch.tril(torch.ones((seq_len, seq_len),
+                                                  device=q.device,
+                                                  dtype=torch.bool))
+
+                # 将掩码扩展到与注意力分数相同的维度
+                # 对于5维张量，需要正确扩展掩码
+                causal_mask = causal_mask.view(1, 1, 1, seq_len, seq_len).expand_as(attn_scores)
+
+                # 应用掩码
+                attn_scores = attn_scores.masked_fill(~causal_mask, float("-inf"))
+
+                # 应用softmax
+                attn_weights = torch.softmax(attn_scores, dim=-1)
+
+                # 对于GQA，重新整理形状
+                # 从 [batch, num_kv_heads, num_queries_per_kv, seq_len, seq_len] 到 [batch, num_heads, seq_len, seq_len]
+                batch_size, num_kv_heads, num_queries_per_kv, seq_len_q, seq_len_k = attn_weights.shape
+                attn_weights = attn_weights.reshape(batch_size, num_kv_heads * num_queries_per_kv, seq_len_q, seq_len_k)
+
+                # 保存当前序列的注意力权重
+                all_attn_weights.append(attn_weights.squeeze(0))
+            else:
+                # 原始的计算方式（非GQA模式）
+                attn_scores = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+                # 创建下三角掩码并应用
+                mask = torch.ones_like(attn_scores, dtype=torch.bool)
+                mask = torch.tril(mask, diagonal=0)
+                attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
+
+                # 应用softmax获取注意力权重
+                attn_weights = torch.softmax(attn_scores, dim=-1)
+
+                # 保存当前序列的注意力权重
+                all_attn_weights.append(attn_weights.squeeze(0))
+
+            # 使用xformers的memory_efficient_attention_forward函数计算输出
+            out = xops.memory_efficient_attention_forward(
+                q,
+                k,
+                v,
+                attn_bias=attn_bias[i],
+                p=0.0,
+                scale=self.scale)
+
+            # 复制到输出张量
+            output[start:end].copy_(out.view_as(original_query[start:end]))
+            start += seq_len
+
+        # 将所有序列的注意力权重拼接成一个张量
+        if all_attn_weights:
+            # 确保所有注意力权重的形状正确，并且可以拼接
+            # 对于GQA模式，每个注意力权重的形状应该是 [num_heads, seq_len, seq_len]
+
+            # 检查所有注意力权重的形状是否一致
+            shapes = [w.shape for w in all_attn_weights]
+            print(f"Attention weights shapes before concatenation: {shapes}")
+
+            # 拼接所有注意力权重
+            # 注意：这里假设我们想要沿着第1维（seq_len维度）拼接
+            # 如果需要不同的拼接方式，请相应调整
+            attention_weights_output = torch.cat(all_attn_weights, dim=1)
+            print(f"Final attention_weights_output shape: {attention_weights_output.shape}")
+        else:
+            # 如果没有序列，创建一个空张量
+            attention_weights_output = torch.empty((self.num_heads, 0, 0),
+                                                  device=output.device,
+                                                  dtype=output.dtype)
+
+        return output, attention_weights_output
 
 def _make_alibi_bias(
     alibi_slopes: torch.Tensor,
@@ -852,3 +1222,36 @@ def _make_alibi_bias(
         attn_biases.append(LowerTriangularMaskWithTensorBias(bias))
 
     return attn_biases
+
+def _make_partial_bias_gqa(cache_metadata, 
+                       device,
+                       num_kv_heads,
+                       num_queries_per_kv,):
+    seq_len = cache_metadata['org_sequence_length']
+    padded_len = (seq_len + 7) // 8 * 8
+    dtype = cache_metadata['kv_cache_dtype']
+    imp_indices = cache_metadata['imp_indices']
+    attn_mask = torch.triu(torch.ones(padded_len,
+                                      padded_len,
+                                      dtype=dtype,
+                                      device=device),
+                           diagonal=1)
+    #FIXME(Jiayi): The first 1 (bsz) is a hack
+    attn_mask = (attn_mask * torch.finfo(dtype).min).view(1, 
+                                                          1, 1, padded_len, padded_len) #FIXME(Jiayi): Now only focus on bsz=1
+    attn_mask = attn_mask[:,:,:,imp_indices]
+    attn_mask = attn_mask.expand(1,
+                                 num_kv_heads,num_queries_per_kv,-1,-1)
+    #import pdb
+    #pdb.set_trace()
+    attn_mask_padded = torch.empty(
+        1,
+        num_kv_heads,
+        num_queries_per_kv,
+        len(imp_indices),
+        padded_len,
+        device=device,
+        dtype=dtype,
+    ).copy_(attn_mask)[:, :, :, :, :seq_len]
+    #attn_mask_padded = LowerTriangularMaskWithTensorBias(attn_mask_padded)
+    return attn_mask_padded

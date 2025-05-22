@@ -98,6 +98,7 @@ class Attention(nn.Module):
         old_kv,
 
         attn_type: AttentionType = AttentionType.DECODER,
+        return_attn_weights=False,
     ) -> torch.Tensor:
 
         return self.impl.forward(query,
@@ -112,6 +113,7 @@ class Attention(nn.Module):
                                  status,
                                  cache_metadata,
                                  old_kv,
+                                 return_attn_weights,
                                  )
 
     def extra_repr(self) -> str:

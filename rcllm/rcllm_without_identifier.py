@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
 from vllm import LLM, SamplingParams
 import torch
@@ -8,7 +8,7 @@ import json
 from transformers import AutoTokenizer
 
 # Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.6)
+llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95,max_model_len=10000)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
 llm.set_tokenizer(tokenizer)
 
@@ -637,7 +637,7 @@ def generate_recommendation_with_cacheblend(user_id):
     sampling_params = SamplingParams(temperature=0.1, max_tokens=256)
     output = llm.generate([input_prompt], sampling_params)
     
-    # print(f"Generation with cache: {output[0].outputs[0].text}")
+    print(f"Generation with cache: {output[0].outputs[0].text}")
     print(f"TTFT with cache: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
     print("------------")
     # return output[0].outputs[0].text
@@ -645,7 +645,7 @@ def generate_recommendation_with_cacheblend(user_id):
     cache_metadata["check"] = False
     cache_metadata['collect'] = False
     output = llm.generate([input_prompt], sampling_params)
-    # print(f"Normal generation: {output[0].outputs[0].text}")
+    print(f"Normal generation: {output[0].outputs[0].text}")
     print(f"TTFT with full prefill: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
     print("------------")
 

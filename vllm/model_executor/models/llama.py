@@ -172,6 +172,8 @@ class LlamaAttention(nn.Module):
                               cache_config=cache_config,
                               quant_config=quant_config)
         self.hack_kv = []
+        # 添加属性来存储最后一次计算的注意力权重
+        self.attn.last_attn_weights = None
 
     def forward(
         self,
@@ -183,7 +185,8 @@ class LlamaAttention(nn.Module):
         status: int,
         cache_metadata: dict,
         old_kv,
-    ) -> torch.Tensor:
+        return_attn_weights: bool = False,  # 添加参数控制是否返回注意力权重
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # 修改返回类型
         qkv, _ = self.qkv_proj(hidden_states)
         # print(f"qkv: {qkv.shape}")
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
@@ -198,16 +201,29 @@ class LlamaAttention(nn.Module):
                                           old_kv[0])
         if cache_metadata["collect"]:
             self.hack_kv = [k.clone(), v.clone()]
+
         q, k = self.rotary_emb(positions, q, k)
-        # print(f"q: {q.shape}")
-        # print(f"k: {k.shape}")
-        attn_output = self.attn(q, k, v, kv_cache, attn_metadata,
-                                status, cache_metadata, old_kv,
-                                self.attn_type)
-        # print(f"attn_output: {attn_output.shape}")
-        output, _ = self.o_proj(attn_output)
-        # print(f"output: {output.shape}")
-        return output
+
+        # 修改这里，传递return_attn_weights参数
+
+        if return_attn_weights:
+            attn_output, attn_weights = self.attn(
+                q, k, v, kv_cache, attn_metadata,
+                status, cache_metadata, old_kv,
+                self.attn_type, return_attn_weights=True
+            )
+            # 保存注意力权重
+            self.attn.last_attn_weights = attn_weights
+            output, _ = self.o_proj(attn_output)
+            return output, attn_weights
+        else:
+            attn_output = self.attn(
+                q, k, v, kv_cache, attn_metadata,
+                status, cache_metadata, old_kv,
+                self.attn_type
+            )
+            output, _ = self.o_proj(attn_output)
+            return output
 
 
 class LlamaDecoderLayer(nn.Module):
@@ -271,7 +287,8 @@ class LlamaDecoderLayer(nn.Module):
         status: int,
         cache_metadata: dict,
         old_kv,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return_attn_weights: bool = False,  # 添加参数控制是否返回注意力权重
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:  # 修改返回类型
         # Self Attention
         if residual is None:
             residual = hidden_states
@@ -280,22 +297,43 @@ class LlamaDecoderLayer(nn.Module):
         else:
             hidden_states, residual = self.input_layernorm(
                 hidden_states, residual)
-        hidden_states = self.self_attn(
-            positions=positions,
-            hidden_states=hidden_states,
-            kv_cache=kv_cache,
-            attn_metadata=attn_metadata,
 
-            status=status,
-            cache_metadata=cache_metadata,
-            old_kv=old_kv,
-        )
+        # 修改这里，传递return_attn_weights参数
+        if return_attn_weights:
+            # 只在第一层或未指定层时返回注意力权重
+            hidden_states, attn_weights = self.self_attn(
+                positions=positions,
+                hidden_states=hidden_states,
+                kv_cache=kv_cache,
+                attn_metadata=attn_metadata,
+                status=status,
+                cache_metadata=cache_metadata,
+                old_kv=old_kv,
+                return_attn_weights=True
+            )
+        else:
+            hidden_states = self.self_attn(
+                positions=positions,
+                hidden_states=hidden_states,
+                kv_cache=kv_cache,
+                attn_metadata=attn_metadata,
+                status=status,
+                cache_metadata=cache_metadata,
+                old_kv=old_kv,
+            )
+
         if cache_metadata["check"] and status == 0:
             residual = residual[cache_metadata["imp_indices"]]
+
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
         hidden_states = self.mlp(hidden_states)
-        return hidden_states, residual
+
+        # 根据是否需要返回注意力权重决定返回值
+        if return_attn_weights:
+            return hidden_states, residual, attn_weights
+        else:
+            return hidden_states, residual
 
 
 class LlamaModel(nn.Module):
@@ -341,8 +379,14 @@ class LlamaModel(nn.Module):
             "check":False,
             "imp_indices": None,
             "org_sequence_length": None,
+            "kv_cache_dtype": None,
         }
         self.old_kvs = [[None,None]]*len(self.layers)
+
+        # 添加用于控制是否返回注意力权重的属性
+        self.return_attn_weights = False
+        # 添加用于存储第一层注意力权重的属性
+        self.first_layer_attn_weights = None
 
     def get_input_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.embed_tokens(input_ids)
@@ -355,7 +399,8 @@ class LlamaModel(nn.Module):
         attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors],
         inputs_embeds: Optional[torch.Tensor] = None,
-    ) -> Union[torch.Tensor, IntermediateTensors]:
+        return_attn_weights: bool = False,  # 添加参数控制是否返回注意力权重
+    ) -> Union[torch.Tensor, IntermediateTensors, Tuple[Union[torch.Tensor, IntermediateTensors], torch.Tensor]]:  # 修改返回类型
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
                 hidden_states = inputs_embeds
@@ -367,14 +412,18 @@ class LlamaModel(nn.Module):
             hidden_states = intermediate_tensors["hidden_states"]
             residual = intermediate_tensors["residual"]
 
+        # 用于存储第一层的注意力权重
+        first_layer_attn_weights = None
+
         if attn_metadata.prefill_metadata:
             if self.cache_metadata["check"]:
-                self.cache_metadata["org_sequence_length"]=input_ids.shape[0]
-                self.cache_metadata["fake_q"]=None
+                self.cache_metadata["org_sequence_length"] = input_ids.shape[0]
+                self.cache_metadata["fake_q"] = None
                 self.cache_metadata["attn_bias"] = None
                 self.cache_metadata["org_pos"] = positions[:]
 
         for i in range(self.start_layer, self.end_layer):
+            self.cache_metadata["layer_id"] = i
             # print(f"layer {i}")
             if i > 0:
                 status = 1
@@ -382,25 +431,49 @@ class LlamaModel(nn.Module):
                 status = 0
             old_kv = self.old_kvs[i]
             layer = self.layers[i]
-            hidden_states, residual = layer(
-                positions,
-                hidden_states,
-                kv_caches[i - self.start_layer],
-                attn_metadata,
-                residual,
 
-                status=status,
-                cache_metadata=self.cache_metadata,
-                old_kv=old_kv,
-            )
+            # 修改这里，传递return_attn_weights参数和层索引
+            if i == 0 and (self.return_attn_weights or return_attn_weights):  # 在第0层获取注意力权重
+                hidden_states, residual, attn_weights = layer(
+                    positions,
+                    hidden_states,
+                    kv_caches[i - self.start_layer],
+                    attn_metadata,
+                    residual,
+                    status=status,
+                    cache_metadata=self.cache_metadata,
+                    old_kv=old_kv,
+                    return_attn_weights=True,
+                )
+                # 保存第一层的注意力权重
+                first_layer_attn_weights = attn_weights
+                # 同时保存到类属性中，以便外部访问
+                self.first_layer_attn_weights = attn_weights
+            else:
+                hidden_states, residual = layer(
+                    positions,
+                    hidden_states,
+                    kv_caches[i - self.start_layer],
+                    attn_metadata,
+                    residual,
+                    status=status,
+                    cache_metadata=self.cache_metadata,
+                    old_kv=old_kv,
+                    return_attn_weights=False,
+                )
+
             if self.cache_metadata["check"] and status == 0:
                 positions = positions[self.cache_metadata["imp_indices"]]
 
         if not get_pp_group().is_last_rank:
-            return IntermediateTensors({
+            result = IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual
             })
+            if return_attn_weights and first_layer_attn_weights is not None:
+                return result, first_layer_attn_weights
+            else:
+                return result
 
         hidden_states, _ = self.norm(hidden_states, residual)
         # print(f"hidden_states: {hidden_states.shape}")
@@ -507,10 +580,26 @@ class LlamaForCausalLM(nn.Module, SupportsLoRA):
         kv_caches: List[torch.Tensor],
         attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors] = None,
-    ) -> Union[torch.Tensor, IntermediateTensors]:
-        model_output = self.model(input_ids, positions, kv_caches,
-                                  attn_metadata, intermediate_tensors)
-        return model_output
+
+        return_attn_weights: bool = False,  # 添加参数控制是否返回注意力权重
+    ) -> Union[torch.Tensor, IntermediateTensors, Tuple[Union[torch.Tensor, IntermediateTensors], torch.Tensor]]:  # 修改返回类型
+        # 设置模型的return_attn_weights属性
+        return_attn_weights = self.model.return_attn_weights
+
+        # 修改这里，传递return_attn_weights参数
+        if return_attn_weights:
+            model_output = self.model(
+                input_ids, positions, kv_caches,
+                attn_metadata, intermediate_tensors,
+                return_attn_weights=True
+            )
+            return model_output
+        else:
+            model_output = self.model(
+                input_ids, positions, kv_caches,
+                attn_metadata, intermediate_tensors
+            )
+            return model_output
 
     def compute_logits(
         self,
