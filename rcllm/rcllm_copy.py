@@ -8,7 +8,7 @@ import json
 from transformers import AutoTokenizer
 
 # Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
+llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len= 10000)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
 llm.set_tokenizer(tokenizer)
 
@@ -534,7 +534,7 @@ def generate_recommendation_with_cacheblend(user_id):
         candidate_prompts.append(candidate_prompt)
     
     # Create the query prompt
-    query_prompt = f"""{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data. The JSON format ranking is: """
+    query_prompt = f"""{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Be careful that the number of the ranking items is {len(candidate_data)}. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data. The JSON format ranking is: """
     
     
 
@@ -645,16 +645,16 @@ def generate_recommendation_with_cacheblend(user_id):
     cache_metadata["check"] = True
     cache_metadata['collect'] = False
     # cache_metadata['suffix_len'] = len(query_ids)
-    # position = list(range(len(input_ids)))
+    position = list(range(len(input_ids) + 1))
     # 从global_top_diff_positions.txt读取position
-    position_file = os.path.join(os.path.dirname(__file__), 'attn_diff_vis/global_top_diff_positions_70.txt')
-    with open(position_file, 'r') as f:
-        position = [int(line.strip()) for line in f if line.strip()]
+    # position_file = os.path.join(os.path.dirname(__file__), 'attn_diff_vis/global_top_diff_positions_80.txt')
+    # with open(position_file, 'r') as f:
+    #     position = [int(line.strip()) for line in f if line.strip()]
 
     cache_metadata['imp_indices'] = position
     cache_metadata['prefix_len'] = len(prefix_ids)
     
-    sampling_params = SamplingParams(temperature=0.1, max_tokens=256)
+    sampling_params = SamplingParams(temperature=0, max_tokens=256)
     output = llm.generate([input_prompt], sampling_params)
     
     print(f"Generation with cache: {output[0].outputs[0].text}")
