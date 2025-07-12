@@ -6,6 +6,11 @@ from vllm import LLM, SamplingParams
 import torch
 import json
 from transformers import AutoTokenizer
+import csv
+import sys
+import time
+# sys.stdout = open('log.txt', 'w', encoding='utf-8')
+# sys.stderr = sys.stdout
 
 # Initialize the large model
 llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len=10000)
@@ -65,7 +70,7 @@ class PromptFieldTracker:
             
             # Calculate the position for each field separately
             for field_name, field_value in item_data.items():
-                print(f"  Processing field: {field_name} = {str(field_value)[:100]}")
+                # print(f"  Processing field: {field_name} = {str(field_value)[:100]}")
                 
                 # Special handling for complex data types
                 if isinstance(field_value, (dict, list)):
@@ -141,7 +146,7 @@ class PromptFieldTracker:
                                     'end': value_end_token
                                 }
                                 
-                                print(f"  Complex field {field_name} position: tokens[{value_start_token}:{value_end_token}]")
+                                # print(f"  Complex field {field_name} position: tokens[{value_start_token}:{value_end_token}]")
                                 continue
                 
                 # Standard handling for strings and basic types
@@ -181,12 +186,12 @@ class PromptFieldTracker:
                     field_pos = item_json_str.find(fmt)
                     if field_pos != -1:
                         field_marker = fmt
-                        print(f"    Found exact match: {fmt}")
+                        # print(f"    Found exact match: {fmt}")
                         break
                 
                 # If exact match fails, locate by key name
                 if field_pos == -1:
-                    print(f"    No exact match found, trying to locate by key name...")
+                    # print(f"    No exact match found, trying to locate by key name...")
                     key_pattern = f'"{field_name}"'
                     key_pos = item_json_str.find(key_pattern)
                     
@@ -228,10 +233,10 @@ class PromptFieldTracker:
                                 # Extract the field marker
                                 field_marker = item_json_str[key_pos:value_end]
                                 field_pos = key_pos
-                                print(f"    Located by key name: {field_marker}")
+                                # print(f"    Located by key name: {field_marker}")
                 
                 if field_pos == -1 or field_marker is None:
-                    print(f"  Warning: Field {field_name} not found")
+                    # print(f"  Warning: Field {field_name} not found")
                     continue
                 
                 # Calculate the position of the value in the field
@@ -303,7 +308,7 @@ class PromptFieldTracker:
                                 value_length = len(field_marker) - value_pos
                 
                 if value_pos == -1:
-                    print(f"  Warning: Unable to locate value position for {field_name}")
+                    # print(f"  Warning: Unable to locate value position for {field_name}")
                     continue
                 
                 # Calculate the position of the value in the complete JSON string
@@ -322,7 +327,7 @@ class PromptFieldTracker:
                 
                 # Validate token boundaries
                 if value_start_token >= value_end_token:
-                    print(f"  Warning: Invalid token boundaries {value_start_token} >= {value_end_token}")
+                    # print(f"  Warning: Invalid token boundaries {value_start_token} >= {value_end_token}")
                     # Try to adjust the boundaries
                     value_end_token = value_start_token + 1
                 
@@ -333,7 +338,7 @@ class PromptFieldTracker:
                     'end': value_end_token
                 }
                 
-                print(f"  Field {field_name} position: tokens[{value_start_token}:{value_end_token}]")
+                # print(f"  Field {field_name} position: tokens[{value_start_token}:{value_end_token}]")
             
             # Store the position information of the current candidate
             self.item_positions.append({
@@ -349,7 +354,7 @@ class PromptFieldTracker:
         # self.input_ids = self.tokenizer.encode(full_prompt)[1:]
         
         # Validate whether the field positions are correct
-        print("\nVerifying field position accuracy...")
+        # print("\nVerifying field position accuracy...")
         self.verify_positions()
         
         # Return the complete input_ids and all_chunk_ids for assembling KV cache
@@ -365,16 +370,16 @@ class PromptFieldTracker:
     def verify_positions(self):
         """Validate whether the extracted positions are accurate"""
         if self.input_ids is None:
-            print("Warning: input_ids not generated yet, cannot verify positions")
+            # print("Warning: input_ids not generated yet, cannot verify positions")
             return False
             
         all_matched = True
         for item_info in self.item_positions:
             i = item_info['item_index']
-            print(f"\nCandidate {i} field positions:")
+            # print(f"\nCandidate {i} field positions:")
             
             for field_name, pos in item_info['fields'].items():
-                print(f"  {field_name}: [{pos['start']}:{pos['end']}]")
+                # print(f"  {field_name}: [{pos['start']}:{pos['end']}]")
                 decoded = self.tokenizer.decode(self.input_ids[pos['start']:pos['end']])
                 
                 # Format the field value for comparison
@@ -384,12 +389,12 @@ class PromptFieldTracker:
                 else:
                     expected_str = str(expected_value)
                 
-                print(f"    Expected value: {expected_str[:100]}")
-                print(f"    Decoded value: {decoded[:100]}")
+                # print(f"    Expected value: {expected_str[:100]}")
+                # print(f"    Decoded value: {decoded[:100]}")
                 
                 # Check if they match
                 if not self._is_similar(expected_value, decoded):
-                    print(f"    Warning: Values don't match!")
+                    # print(f"    Warning: Values don't match!")
                     all_matched = False
         
         return all_matched
@@ -397,7 +402,7 @@ class PromptFieldTracker:
     def visualize_positions(self):
         """Visualize the field marker positions in the entire input text"""
         if self.input_ids is None:
-            print("Warning: input_ids not generated yet, cannot visualize positions")
+            # print("Warning: input_ids not generated yet, cannot visualize positions")
             return
         
         # Decode the complete input
@@ -441,10 +446,10 @@ class PromptFieldTracker:
                     marked_text.insert(pos, f"<{field_name}]")
         
         # Print the marked text
-        print("\n===== Field Position Visualization =====")
+        # print("\n===== Field Position Visualization =====")
         marked_str = ''.join(marked_text)
-        print(marked_str)
-        print("===== Visualization End =====\n")
+        # print(marked_str)
+        # print("===== Visualization End =====\n")
     
     def _is_similar(self, expected, actual):
         """Check if two strings are basically similar (considering possible tokenizer differences)"""
@@ -540,15 +545,15 @@ def generate_recommendation_with_cacheblend(user_id):
         candidate_prompts.append(candidate_prompt)
     
     # Create the query prompt
-    query_prompt = f"""\n{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Be careful that the number of the ranking items is {len(candidate_data)}. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data. The ranking results should be in the following format: \n{{\"rank\": \"[] > [] .. > []\"}}."""
+    query_prompt = f"""\n{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Be careful that the number of the ranking items is {len(candidate_data)}. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data."""
     
     
 
     # Create an instance of PromptFieldTracker
     tracker = PromptFieldTracker(tokenizer)
     
-    print(f"Number of loaded candidates: {len(candidate_data)}")
-    print("Example candidate:", json.dumps(candidate_data[0], indent=2)[:200] + "...")
+    # print(f"Number of loaded candidates: {len(candidate_data)}")
+    # print("Example candidate:", json.dumps(candidate_data[0], indent=2)[:200] + "...")
     
     # Track positions
     input_ids, all_chunk_ids = tracker.track_positions(history_prompt, candidate_data, query_prompt)
@@ -565,7 +570,7 @@ def generate_recommendation_with_cacheblend(user_id):
         for field_name, pos in item_info['fields'].items():
             start = pos['start']
             end = pos['end']
-            print(f"Field {field_name} position: [{start}:{end}]")
+            # print(f"Field {field_name} position: [{start}:{end}]")
             position.extend(list(range(start, end + 1)))
 
     # Get token IDs
@@ -573,7 +578,7 @@ def generate_recommendation_with_cacheblend(user_id):
     candidate_ids = [tokenizer.encode(prompt)[1:] for prompt in candidate_prompts]
     query_ids = tokenizer.encode(query_prompt)[1:]
     
-    print(f"Number of candidates: {len(candidate_ids)}")
+    # print(f"Number of candidates: {len(candidate_ids)}")
 
     # 获取query部分的token位置
 
@@ -581,7 +586,9 @@ def generate_recommendation_with_cacheblend(user_id):
     # 确保position中的位置不超过input_ids的边界
     input_ids_len = len(input_ids)
     position = [p for p in position if p < input_ids_len]
-    print(f"Position length after boundary check: {len(position)}")
+    # 使用assert确保position中的所有数字不超过input_ids_len
+    assert all(p < input_ids_len for p in position), f"Position index {max(position)} exceeds input_ids length {input_ids_len}"
+    # print(f"Position length after boundary check: {len(position)}")
     
     # Initialize cache collection
     cache_metadata = llm.llm_engine.model_executor.driver_worker.model_runner.model.model.cache_metadata
@@ -629,11 +636,11 @@ def generate_recommendation_with_cacheblend(user_id):
                 chunk_past_key_values[j][0] = torch.cat((chunk_past_key_values[j][0], temp_k), dim=0)
                 chunk_past_key_values[j][1] = torch.cat((chunk_past_key_values[j][1], temp_v), dim=0)
         
-        print(f"Processed chunk {i}, shape: {temp_k.shape[0]}")
+        # print(f"Processed chunk {i}, shape: {temp_k.shape[0]}")
     
     # Set the merged KV cache
     llm.llm_engine.model_executor.driver_worker.model_runner.model.model.old_kvs = chunk_past_key_values
-    print(f"Final KV cache shape: {chunk_past_key_values[0][0].shape[0]}")
+    # print(f"Final KV cache shape: {chunk_past_key_values[0][0].shape[0]}")
     
     # Construct the complete input
     input_ids = []
@@ -648,42 +655,49 @@ def generate_recommendation_with_cacheblend(user_id):
     # Generate using the cache
     cache_metadata["check"] = True
     cache_metadata['collect'] = False
-    # cache_metadata['suffix_len'] = len(query_ids)
-    # position = list(range(len(prefix_ids),len(input_ids) + 1))
-    # 从global_top_diff_positions.txt读取position
-    # position_file = os.path.join(os.path.dirname(__file__), 'attn_diff_vis/global_top_diff_positions_50.txt')
-    # with open(position_file, 'r') as f:
-    #     position = [int(line.strip()) for line in f if line.strip()]
-
     cache_metadata['imp_indices'] = position
     cache_metadata['prefix_len'] = len(prefix_ids)
-    
     sampling_params = SamplingParams(temperature=0, max_tokens=256)
     output = llm.generate([input_prompt], sampling_params)
-    
-    print(f"Generation with cache: {output[0].outputs[0].text}")
-    print(f"TTFT with cache: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
-    print("------------")
-    # return output[0].outputs[0].text
-
+    gen_cache = output[0].outputs[0].text
+    # print(f"Generation with cache: {gen_cache}")
+    # print(f"TTFT with cache: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
+    # print("------------")
     cache_metadata["check"] = False
     cache_metadata['collect'] = False
     output = llm.generate([input_prompt], sampling_params)
-    print(f"Normal generation: {output[0].outputs[0].text}")
-    print(f"TTFT with full prefill: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
-    print("------------")
+    gen_normal = output[0].outputs[0].text
+    # print(f"Normal generation: {gen_normal}")
+    # print(f"TTFT with full prefill: {output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time}")
+    # print("------------")
+    return gen_cache, gen_normal
 
 if __name__ == "__main__":
-    user_id = "user_A116O8Y1KIU1M"
+    print("\n=====Batch Generating Recommendations for Top 50 Users=====")
+    dataset_dir = os.path.join(os.path.dirname(__file__), "../../dataset")
+    user_dirs = [d for d in os.listdir(dataset_dir) if d.startswith("user_")]
+    user_dirs.sort()  # 按文件名排序
+    top50_users = user_dirs[45:50]
+    results = []
+    for uid in top50_users:
+        # if uid == "user_A059547920Q3LZVFHLPI3":
+        #     print(f"Skipping {uid}")
+        #     continue
+        print(f"\n=====Processing {uid}=====")
+        try:
+            gen_cache, gen_normal = generate_recommendation_with_cacheblend(uid)
+            results.append([uid, gen_cache, gen_normal])
+        except Exception as e:
+            print(f"Error processing {uid}: {e}")
+            results.append([uid, "ERROR", "ERROR"])
 
-    # Continue the original recommendation generation process
-    print("\n=====Generating Recommendations=====")
-    recommendation = generate_recommendation_with_cacheblend(user_id)
-    
-    # # Save the results to a file
-    # results_dir = "results"
-    # os.makedirs(results_dir, exist_ok=True)
-    # with open(os.path.join(results_dir, f"{user_id}_recommendation.txt"), 'w') as f:
-    #     f.write(recommendation)
-    # print(f"The result of recommendation has been storen in {results_dir}/{user_id}_recommendation.txt")
-    print("===== End =====")
+        time.sleep(1)
+    # 写入csv
+    csv_path = os.path.join(os.path.dirname(__file__), "../recommendation_results_top50.csv")
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, "a", newline='', encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(["user_id", "Generation with cache", "Normal generation"])
+        writer.writerows(results)
+    print(f"Batch results saved to {csv_path}")

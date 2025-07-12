@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
 from vllm import LLM, SamplingParams
 import torch
@@ -24,7 +24,7 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 # 初始化大模型
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
+llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95,enforce_eager=True)
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
 # llm.set_tokenizer(tokenizer) # set_tokenizer is deprecated
 
@@ -54,9 +54,9 @@ def generate_recommendation_with_cache(user_id):
     # 构建基本提示前缀
     prefix_prompt = f"""You are an intelligent assistant that can rank items based on the user's preference. The history items and candidate items are listed below. The prefix of history items should be [history] and the prefix of candidate items should be [i]. i is the identifier of the candidate item. Please rank the candidate items based on the user's history. You should strictly obey the following rules: 
     1. All the candidate items should be included and listed using identifiers, in descending order of the user's preference. The most preferred recommendation item should be listed first.
-    2. The output format should be [] > [], where each [] is an identifier, e.g., [1] > [0] > [2].
-    3. Only respond with the ranking results, do not say any word or explain. Output in the following JSON format: \n{{\"rank\": \"[] > [] .. > []\"}}.
-    4. Do not output anything other than the JSON format data.\n"""
+    2. The results format should be [] > [], where each [] is an identifier, e.g., [2] > [1] > [0].
+    3. Only respond with the ranking results, do not say any word or explain.
+    4. Output in the following JSON format: \n{{\"rank\": \"[] > [] .. > []\"}}."""
 
     # 将历史数据格式化为提示的一部分 - 这部分逻辑会移到 track_positions 或作为其输入
     # purchase_history = "\n".join([f"- {item}" for item in history_data])
@@ -70,7 +70,7 @@ def generate_recommendation_with_cache(user_id):
                                                           # New track_positions takes raw candidate_data (list of dicts)
     
     # 创建查询提示
-    query_prompt = f"""{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data. The JSON format ranking is: """
+    query_prompt = f"""\n{len(history_data)} history items and {len(candidate_data)} candidate items are listed above. Be careful that the number of the ranking items is {len(candidate_data)}. Please give me the JSON format data of the ranking results, do not output anything other than the JSON format data."""
     
     # 创建PromptFieldTracker的实例
     tracker = PromptFieldTracker(tokenizer)
@@ -98,7 +98,7 @@ def generate_recommendation_with_cache(user_id):
     imp_indices.extend(value_positions)
     imp_indices.extend(query_position)
 
-    imp_indices = list(range(len(input_ids)))
+    # imp_indices = list(range(len(input_ids)+1))
 
     logger.debug(f"Tracked token positions from candidate values: {len(imp_indices)} tokens, {imp_indices}")
     logger.info(f"Number of chunks in all_chunk_ids: {len(all_chunk_ids)}")
@@ -213,7 +213,7 @@ def generate_recommendation_with_cache(user_id):
     print("------------")
 
 if __name__ == "__main__":
-    user_id = "user_A1A5YE7K0WHN2T"
+    user_id = "user_A10FW892S59ABJ"
     logger.info("\n=====Generating Recommendations=====")
     # recommendation = generate_recommendation_with_cache(user_id) # Function doesn't return anymore
     generate_recommendation_with_cache(user_id)

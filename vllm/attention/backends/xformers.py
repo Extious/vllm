@@ -550,68 +550,78 @@ class XFormersImpl(AttentionImpl[XFormersMetadata]):
             # key_old, value_old: [num_tokens, num_kv_heads, head_size]
             # imp_indices: 需要更新的位置
             # 假设每一层调用一次此forward，层号可通过cache_metadata["layer_id"]传入
-            layer_id = cache_metadata.get("layer_id", 0)
-            # 只对imp_indices位置进行可视化
-            prefix_len = cache_metadata.get('prefix_len', 0)
-            key_diff = (key.detach().cpu() - key_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
-            value_diff = (value.detach().cpu() - value_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
-            # 只画出prefix_len之后的token位置
-            if key_diff.shape[0] > prefix_len:
-                plot_key_diff = key_diff[prefix_len:]
-                plot_value_diff = value_diff[prefix_len:]
-                plot_indices = range(prefix_len, key_diff.shape[0])
-            else:
-                plot_key_diff = key_diff
-                plot_value_diff = value_diff
-                plot_indices = range(key_diff.shape[0])
+            # layer_id = cache_metadata.get("layer_id", 0)
+            # # 只对imp_indices位置进行可视化
+            # prefix_len = cache_metadata.get('prefix_len', 0)
+            # key_diff = (key.detach().cpu() - key_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
+            # value_diff = (value.detach().cpu() - value_old[imp_indices].detach().cpu()).abs().mean(dim=-1)  # [num_tokens, num_kv_heads]
+            # # 只画出prefix_len之后的token位置
+            # if key_diff.shape[0] > prefix_len:
+            #     plot_key_diff = key_diff[prefix_len:]
+            #     plot_value_diff = value_diff[prefix_len:]
+            #     plot_indices = range(prefix_len, key_diff.shape[0])
+            # else:
+            #     plot_key_diff = key_diff
+            #     plot_value_diff = value_diff
+            #     plot_indices = range(key_diff.shape[0])
 
-            # ===== 新增：记录差异最大的50%位置 =====
-            # 只考虑prefix_len之后的token
-            if plot_key_diff.shape[0] > 0:
-                # 取key和value的均值（可选：也可以只用key或value）
-                mean_diff = (plot_key_diff.mean(dim=1) + plot_value_diff.mean(dim=1)) / 2  # [num_plot_tokens]
-                num_top = max(1, int(len(mean_diff) * 0.5))
-                top_indices = mean_diff.topk(num_top).indices.cpu().numpy()
-                # 这些是相对plot_indices的下标，需转为全局token位置
-                top_positions = [plot_indices[i] for i in top_indices]
-                # 用一个全局集合存储所有层所有head的top位置
-                save_dir = "./attn_diff_vis"
-                global_top_positions_file = os.path.join(save_dir, 'global_top_diff_positions_50.txt')
-                # 用set去重
-                if not hasattr(self, '_global_top_positions'):
-                    self._global_top_positions = set()
-                for pos in top_positions:
-                    self._global_top_positions.add(int(pos))
-                # 每层都写一次，最后会是全集合
-                with open(global_top_positions_file, 'w') as f:
-                    for pos in sorted(self._global_top_positions):
-                        f.write(f"{pos}\n")
-            # ===== 新增结束 =====
-            # 画图，每个头一条曲线，横坐标为token位置
-            save_dir = "./attn_diff_vis"
-            os.makedirs(save_dir, exist_ok=True)
-            # key
-            plt.figure(figsize=(12, 6))
-            for h in range(plot_key_diff.shape[1]):
-                plt.plot(plot_indices, plot_key_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
-            plt.xlabel("Token Position (imp_indices)")
-            plt.ylabel("Key Diff (mean abs)")
-            plt.title(f"Layer {layer_id} Key Diff Per Head (pos >= {prefix_len})")
-            plt.legend(fontsize=6, ncol=4)
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, f"layer{layer_id}_key_diff.png"))
-            plt.close()
-            # value
-            plt.figure(figsize=(12, 6))
-            for h in range(plot_value_diff.shape[1]):
-                plt.plot(plot_indices, plot_value_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
-            plt.xlabel("Token Position (imp_indices)")
-            plt.ylabel("Value Diff (mean abs)")
-            plt.title(f"Layer {layer_id} Value Diff Per Head (pos >= {prefix_len})")
-            plt.legend(fontsize=6, ncol=4)
-            plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, f"layer{layer_id}_value_diff.png"))
-            plt.close()
+            # # ===== 修改：记录差异最大的top0.1~top0.9区间位置 =====
+            # # 只考虑prefix_len之后的token
+            # if plot_key_diff.shape[0] > 0:
+            #     mean_diff = (plot_key_diff.mean(dim=1) + plot_value_diff.mean(dim=1)) / 2  # [num_plot_tokens]
+            #     save_dir = "./attn_diff_vis"
+            #     os.makedirs(save_dir, exist_ok=True)
+            #     # 依次处理top0.1~top0.9
+            #     for ratio in range(1, 10):
+            #         top_ratio = ratio / 10.0
+            #         prev_top_ratio = (ratio - 1) / 10.0
+            #         num_top = max(1, int(len(mean_diff) * top_ratio))
+            #         num_prev_top = max(0, int(len(mean_diff) * prev_top_ratio))
+            #         # 取前top_ratio比例的下标
+            #         top_indices = mean_diff.topk(num_top).indices.cpu().numpy()
+            #         prev_top_indices = mean_diff.topk(num_prev_top).indices.cpu().numpy() if num_prev_top > 0 else []
+            #         # 只保留当前区间的下标
+            #         interval_indices = set(top_indices) - set(prev_top_indices)
+            #         # 这些是相对plot_indices的下标，需转为全局token位置
+            #         top_positions = [plot_indices[i] for i in interval_indices]
+            #         # 用一个全局集合存储所有层所有head的top位置
+            #         global_top_positions_file = os.path.join(save_dir, f'global_top_diff_positions_{ratio}0.txt')
+            #         attr_name = f'_global_top_positions_{ratio}0'
+            #         if not hasattr(self, attr_name):
+            #             setattr(self, attr_name, set())
+            #         global_top_positions = getattr(self, attr_name)
+            #         for pos in top_positions:
+            #             global_top_positions.add(int(pos))
+            #         # 每层都写一次，最后会是全集合
+            #         with open(global_top_positions_file, 'w') as f:
+            #             for pos in sorted(global_top_positions):
+            #                 f.write(f"{pos}\n")
+            # # ===== 修改结束 =====
+            # # 画图，每个头一条曲线，横坐标为token位置
+            # save_dir = "./attn_diff_vis"
+            # os.makedirs(save_dir, exist_ok=True)
+            # # key
+            # plt.figure(figsize=(12, 6))
+            # for h in range(plot_key_diff.shape[1]):
+            #     plt.plot(plot_indices, plot_key_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
+            # plt.xlabel("Token Position (imp_indices)")
+            # plt.ylabel("Key Diff (mean abs)")
+            # plt.title(f"Layer {layer_id} Key Diff Per Head (pos >= {prefix_len})")
+            # plt.legend(fontsize=6, ncol=4)
+            # plt.tight_layout()
+            # plt.savefig(os.path.join(save_dir, f"layer{layer_id}_key_diff.png"))
+            # plt.close()
+            # # value
+            # plt.figure(figsize=(12, 6))
+            # for h in range(plot_value_diff.shape[1]):
+            #     plt.plot(plot_indices, plot_value_diff[:, h].to(torch.float32).numpy(), label=f"head {h}")
+            # plt.xlabel("Token Position (imp_indices)")
+            # plt.ylabel("Value Diff (mean abs)")
+            # plt.title(f"Layer {layer_id} Value Diff Per Head (pos >= {prefix_len})")
+            # plt.legend(fontsize=6, ncol=4)
+            # plt.tight_layout()
+            # plt.savefig(os.path.join(save_dir, f"layer{layer_id}_value_diff.png"))
+            # plt.close()
             
             key_old[imp_indices] = key
             assert value.shape[0] == len(imp_indices)

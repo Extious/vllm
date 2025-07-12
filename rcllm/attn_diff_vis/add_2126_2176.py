@@ -6,7 +6,7 @@ file_template = 'global_top_diff_positions_{}.txt'
 folder = os.path.dirname(__file__)
 
 # 要添加的数字区间
-add_nums = set(str(i) for i in range(1241, 1283))
+add_nums = set(str(i) for i in range(2126, 2177))
 
 for idx in file_indices:
     file_path = os.path.join(folder, file_template.format(idx))

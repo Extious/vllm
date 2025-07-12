@@ -1,0 +1,69 @@
+/home/comp/csstchen/rcllm/vllm/vllm/transformers_utils/tokenizer_group/tokenizer_group.py:23: FutureWarning: It is strongly recommended to run mistral models with `--tokenizer_mode "mistral"` to ensure correct encoding and decoding.
+  self.tokenizer = get_tokenizer(self.tokenizer_id, **tokenizer_config)
+/home/comp/csstchen/.conda/envs/rcllm/lib/python3.12/site-packages/xformers/ops/fmha/flash.py:211: FutureWarning: `torch.library.impl_abstract` was renamed to `torch.library.register_fake`. Please use that instead; we will remove `torch.library.impl_abstract` in a future version of PyTorch.
+  @torch.library.impl_abstract("xformers_flash::flash_fwd")
+/home/comp/csstchen/.conda/envs/rcllm/lib/python3.12/site-packages/xformers/ops/fmha/flash.py:344: FutureWarning: `torch.library.impl_abstract` was renamed to `torch.library.register_fake`. Please use that instead; we will remove `torch.library.impl_abstract` in a future version of PyTorch.
+  @torch.library.impl_abstract("xformers_flash::flash_bwd")
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/rcllm/rcllm_all_users.py", line 16, in <module>
+[rank0]:     llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len=10000)
+[rank0]:           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/entrypoints/llm.py", line 178, in __init__
+[rank0]:     self.llm_engine = LLMEngine.from_engine_args(
+[rank0]:                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/engine/llm_engine.py", line 557, in from_engine_args
+[rank0]:     engine = cls(
+[rank0]:              ^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/engine/llm_engine.py", line 324, in __init__
+[rank0]:     self.model_executor = executor_class(
+[rank0]:                           ^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/executor/executor_base.py", line 47, in __init__
+[rank0]:     self._init_executor()
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/executor/gpu_executor.py", line 40, in _init_executor
+[rank0]:     self.driver_worker.load_model()
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/worker/worker.py", line 183, in load_model
+[rank0]:     self.model_runner.load_model()
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/worker/model_runner.py", line 999, in load_model
+[rank0]:     self.model = get_model(model_config=self.model_config,
+[rank0]:                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/model_loader/__init__.py", line 19, in get_model
+[rank0]:     return loader.load_model(model_config=model_config,
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/model_loader/loader.py", line 358, in load_model
+[rank0]:     model = _initialize_model(model_config, self.load_config,
+[rank0]:             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/model_loader/loader.py", line 172, in _initialize_model
+[rank0]:     return build_model(
+[rank0]:            ^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/model_loader/loader.py", line 157, in build_model
+[rank0]:     return model_class(config=hf_config,
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/llama.py", line 546, in __init__
+[rank0]:     self.model = LlamaModel(config,
+[rank0]:                  ^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/llama.py", line 366, in __init__
+[rank0]:     self.start_layer, self.end_layer, self.layers = make_layers(
+[rank0]:                                                     ^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/utils.py", line 249, in make_layers
+[rank0]:     maybe_offload_to_cpu(layer_fn(prefix=f"{prefix}.{idx}"))
+[rank0]:                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/llama.py", line 368, in <lambda>
+[rank0]:     lambda prefix: LlamaDecoderLayer(config=config,
+[rank0]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/llama.py", line 266, in __init__
+[rank0]:     self.mlp = LlamaMLP(
+[rank0]:                ^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/models/llama.py", line 72, in __init__
+[rank0]:     self.gate_up_proj = MergedColumnParallelLinear(
+[rank0]:                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/layers/linear.py", line 420, in __init__
+[rank0]:     super().__init__(input_size=input_size,
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/layers/linear.py", line 304, in __init__
+[rank0]:     self.quant_method.create_weights(
+[rank0]:   File "/home/comp/csstchen/rcllm/vllm/vllm/model_executor/layers/linear.py", line 122, in create_weights
+[rank0]:     weight = Parameter(torch.empty(sum(output_partition_sizes),
+[rank0]:                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/home/comp/csstchen/.conda/envs/rcllm/lib/python3.12/site-packages/torch/utils/_device.py", line 79, in __torch_function__
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 224.00 MiB. GPU 0 has a total capacity of 23.53 GiB of which 55.38 MiB is free. Process 836882 has 14.96 GiB memory in use. Including non-PyTorch memory, this process has 8.50 GiB memory in use. Of the allocated memory 8.05 GiB is allocated by PyTorch, and 13.70 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
