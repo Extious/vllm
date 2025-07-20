@@ -542,7 +542,7 @@ def generate_recommendation_with_cacheblend(user_id):
     
     # Track positions
     input_ids, all_chunk_ids = tracker.track_positions(prefix_prompt, all_items, query_prompt)
-    query_ids = tokenizer.encode(query_prompt)[1:]   # 提前赋值，避免后续引用未定义
+    query_ids = tokenizer.encode(query_prompt)[1:]   # Assign value early to avoid undefined reference later
     # Calculate tracking statistics
     position = []
     for item_info in tracker.get_field_positions():
@@ -553,7 +553,7 @@ def generate_recommendation_with_cacheblend(user_id):
             position.extend(list(range(start, end + 1)))
     print(f"Tracked token positions: {position}")
 
-    # 新增：将 query_prompt 的 token position 也加入
+    # New: Also add token positions of query_prompt
     query_start = len(input_ids) - len(query_ids)
     query_end = len(input_ids) - 1
     print(f"Query prompt token position: [{query_start}:{query_end}]")
@@ -650,13 +650,13 @@ def generate_recommendation_with_cacheblend(user_id):
     print("------------")
 
 if __name__ == "__main__":
-    # 只处理指定用户
+    # Only process specified user
     test_user_id = "user_A1A5YE7K0WHN2T"
-    print(f"\n===== 为用户 {test_user_id} 生成推荐 =====")
+    print(f"\n===== Generating recommendations for user {test_user_id} =====")
     try:
         recommendation = generate_recommendation_with_cacheblend(test_user_id)
     except Exception as e:
-        print(f"为用户 {test_user_id} 生成推荐时出错：{e}")
-    print(f"===== 用户 {test_user_id} 结束 =====")
+        print(f"Error generating recommendations for user {test_user_id}: {e}")
+    print(f"===== User {test_user_id} completed =====")
 
-    print("\n===== 测试完成 =====")
+    print("\n===== Test completed =====")

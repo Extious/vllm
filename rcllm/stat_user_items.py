@@ -12,7 +12,7 @@ for user_dir in os.listdir(dataset_dir):
     history_path = os.path.join(user_path, 'history.json')
     candidate_path = os.path.join(user_path, 'candidate.json')
 
-    # 统计history.json
+    # Count history.json
     if os.path.exists(history_path):
         with open(history_path, 'r') as f:
             try:
@@ -23,7 +23,7 @@ for user_dir in os.listdir(dataset_dir):
     else:
         history_count = 0
 
-    # 统计candidate.json
+    # Count candidate.json
     if os.path.exists(candidate_path):
         with open(candidate_path, 'r') as f:
             try:
@@ -40,7 +40,7 @@ for user_dir in os.listdir(dataset_dir):
         'candidate_count': candidate_count
     })
 
-# 输出统计结果
+# Output statistics results
 with open('item_num.json', 'w') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 

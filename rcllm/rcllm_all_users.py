@@ -580,13 +580,13 @@ def generate_recommendation_with_cacheblend(user_id):
     
     # print(f"Number of candidates: {len(candidate_ids)}")
 
-    # 获取query部分的token位置
+    # Get token positions for the query part
 
     position.extend(list(range(len(input_ids) - len(query_ids), len(input_ids))))
-    # 确保position中的位置不超过input_ids的边界
+    # Ensure positions in position don't exceed input_ids boundaries
     input_ids_len = len(input_ids)
     position = [p for p in position if p < input_ids_len]
-    # 使用assert确保position中的所有数字不超过input_ids_len
+    # Use assert to ensure all numbers in position don't exceed input_ids_len
     assert all(p < input_ids_len for p in position), f"Position index {max(position)} exceeds input_ids length {input_ids_len}"
     # print(f"Position length after boundary check: {len(position)}")
     
@@ -676,7 +676,7 @@ if __name__ == "__main__":
     print("\n=====Batch Generating Recommendations for Top 50 Users=====")
     dataset_dir = os.path.join(os.path.dirname(__file__), "../../dataset")
     user_dirs = [d for d in os.listdir(dataset_dir) if d.startswith("user_")]
-    user_dirs.sort()  # 按文件名排序
+    user_dirs.sort()  # Sort by filename
     top50_users = user_dirs[45:50]
     results = []
     for uid in top50_users:
@@ -692,7 +692,7 @@ if __name__ == "__main__":
             results.append([uid, "ERROR", "ERROR"])
 
         time.sleep(1)
-    # 写入csv
+    # Write to csv
     csv_path = os.path.join(os.path.dirname(__file__), "../recommendation_results_top50.csv")
     write_header = not os.path.exists(csv_path)
     with open(csv_path, "a", newline='', encoding="utf-8") as f:

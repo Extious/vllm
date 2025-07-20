@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import os
 from collections import Counter, defaultdict
 
-# 文件名和对应的top-k
+# Filenames and corresponding top-k
 files = [
     ("global_top_diff_positions_10.txt", 10),
     ("global_top_diff_positions_20.txt", 20),
@@ -18,7 +18,7 @@ files = [
 position_in_file_count = defaultdict(int)
 all_positions = set()
 
-# 统计每个position在多少个文件中出现
+# Count how many files each position appears in
 for fname, _ in files:
     path = os.path.join(os.path.dirname(__file__), fname)
     with open(path) as f:
@@ -29,7 +29,7 @@ for fname, _ in files:
 
 all_positions = sorted(all_positions)
 
-# 分为六段
+# Divide into six parts
 n = len(all_positions)
 parts = [
     (i * n // 6, (i + 1) * n // 6) for i in range(6)
@@ -38,7 +38,7 @@ parts = [
 for i, (start, end) in enumerate(parts, 1):
     plt.figure(figsize=(20, 10))
     part_positions = all_positions[start:end]
-    # 只保留在该区间内有数据的位置
+    # Only keep positions with data in this range
     valid_positions = [pos for pos in part_positions if position_in_file_count[pos] > 0]
     if not valid_positions:
         continue

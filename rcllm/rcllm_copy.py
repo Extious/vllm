@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
 from vllm import LLM, SamplingParams
 import torch
@@ -8,8 +8,11 @@ import json
 from transformers import AutoTokenizer
 
 # Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len= 10000)
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
+# llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
+# tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", gpu_memory_utilization=0.5, enforce_eager=True, max_model_len=10000)
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
+
 llm.set_tokenizer(tokenizer)
 
 class PromptFieldTracker:
@@ -569,12 +572,12 @@ def generate_recommendation_with_cacheblend(user_id):
     
     print(f"Number of candidates: {len(candidate_ids)}")
 
-    # 获取query部分的token位置
+    # Get token positions for the query part
     query_start = len(prefix_ids) + sum(len(ids) for ids in candidate_ids)
     query_end = query_start + len(query_ids) - 1
     print(f"Query token position: [{query_start}:{query_end}]")
     position.extend(list(range(query_start, query_end + 1)))
-    # 确保position中的位置不超过input_ids的边界
+    # Ensure positions in position don't exceed input_ids boundaries
     input_ids_len = len(input_ids)
     position = [p for p in position if p < input_ids_len]
     print(f"Position length after boundary check: {len(position)}")
@@ -646,7 +649,7 @@ def generate_recommendation_with_cacheblend(user_id):
     cache_metadata['collect'] = False
     # cache_metadata['suffix_len'] = len(query_ids)
     position = list(range(len(input_ids) + 1))
-    # 从global_top_diff_positions.txt读取position
+    # Read position from global_top_diff_positions.txt
     # position_file = os.path.join(os.path.dirname(__file__), 'attn_diff_vis/global_top_diff_positions_80.txt')
     # with open(position_file, 'r') as f:
     #     position = [int(line.strip()) for line in f if line.strip()]
@@ -670,7 +673,7 @@ def generate_recommendation_with_cacheblend(user_id):
     print("------------")
 
 if __name__ == "__main__":
-    user_id = "user_A1A5YE7K0WHN2T"
+    user_id = "user_A10FW892S59ABJ"
 
     # Continue the original recommendation generation process
     print("\n=====Generating Recommendations=====")

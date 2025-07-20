@@ -7,9 +7,11 @@ import torch
 import json
 from transformers import AutoTokenizer
 
-# Initialize the large model
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len=10000)
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
+# llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
+# tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", gpu_memory_utilization=0.5, enforce_eager=True, max_model_len=10000)
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
+
 llm.set_tokenizer(tokenizer)
 
 class PromptFieldTracker:
@@ -674,7 +676,7 @@ def generate_recommendation_with_cacheblend(user_id):
     print("------------")
 
 if __name__ == "__main__":
-    user_id = "user_A116O8Y1KIU1M"
+    user_id = "user_A10FW892S59ABJ"
 
     # Continue the original recommendation generation process
     print("\n=====Generating Recommendations=====")
