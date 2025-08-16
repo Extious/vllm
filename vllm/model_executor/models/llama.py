@@ -401,6 +401,8 @@ class LlamaModel(nn.Module):
         inputs_embeds: Optional[torch.Tensor] = None,
         return_attn_weights: bool = False,  # 添加参数控制是否返回注意力权重
     ) -> Union[torch.Tensor, IntermediateTensors, Tuple[Union[torch.Tensor, IntermediateTensors], torch.Tensor]]:  # 修改返回类型
+        # print(f"input_ids: {input_ids.shape}")
+        # print(f"input_ids: {input_ids}")
         if get_pp_group().is_first_rank:
             if inputs_embeds is not None:
                 hidden_states = inputs_embeds

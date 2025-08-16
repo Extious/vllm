@@ -1,0 +1,333 @@
+Token Comparison Analysis
+========================
+
+Original sequence length: 293
+Processed sequence length: 290
+
+Original prompt decoded:
+You are an intelligent assistant that can rank items based on the user's preference.
+User A10FW892S59ABJ has purchased the following items in this order:
+- {'itemID': 'B002NGMEQC', 'title': 'BaByliss Pro BABCHV21 Ceramic Instant Heat 20-Roller Set, Varied','salesRank': {'Beauty': 95234}, 'categories': [['Beauty', 'Hair Care', 'Styling Tools', 'Hair Rollers']], 'price': nan, 'brand': nan}
+- {'itemID': 'B004VMGTY4', 'title': "Burt's Bees Sensitive Daily Moisturizing Cream, 1.8 Ounces",'salesRank': {'Beauty': 626}, 'categories': [['Beauty', 'Skin Care', 'Face', 'Creams & Moisturizers']], 'price': 8.35, 'brand': 'Burt&#39;s Bees'}
+- {'itemID': 'B001ECQ4RQ', 'title': 'Dove Sensitive Skin Nourishing Body Wash, 24 Ounce,Unscented (Pack of 3)','salesRank': {'Beauty': 36805}, 'categories': [['Beauty', 'Bath & Body', 'Cleansers', 'Body Washes']], 'price': 25.72, 'brand': 'Dove'}
+
+
+
+Processed prompt decoded:
+You are an intelligent assistant that can rank items based on the user's preference.
+User A10FW892S59ABJ has purchased the following items in this order:
+- {'itemID': 'B002NGMEQC', 'title': 'BaByliss Pro BABCHV21 Ceramic Instant Heat 20-Roller Set, Varied','salesRank': {'Beauty': 95234}, 'categories': [['Beauty', 'Hair Care', 'Styling Tools', 'Hair Rollers']], 'price': nan, 'brand': nan}
+- {'itemID': 'B004VMGTY4', 'title': "Burt's Bees Sensitive Daily Moisturizing Cream, 1.8 Ounces",'salesRank': {'Beauty': 626}, 'categories': [['Beauty', 'Skin Care', 'Face', 'Creams & Moisturizers']], 'price': 8.35, 'brand': 'Burt&#39;s Bees'}
+- {'itemID': 'B001ECQ4RQ', 'title': 'Dove Sensitive Skin Nourishing Body Wash, 24 Ounce,Unscented (Pack of 3)','salesRank': {'Beauty': 36805}, 'categories': [['Beauty', 'Bath & Body', 'Cleansers', 'Body Washes']], 'price': 25.72, 'brand': 'Dove'}
+
+
+
+Token-by-token comparison:
+--------------------------------------------------------------------------------
+Index  Original ID  Original Text             Processed ID Processed Text            Match 
+--------------------------------------------------------------------------------
+0      2675         You                       2675         You                       Y     
+1      527           are                      527           are                      Y     
+2      459           an                       459           an                       Y     
+3      25530         intelligent              25530         intelligent              Y     
+4      18328         assistant                18328         assistant                Y     
+5      430           that                     430           that                     Y     
+6      649           can                      649           can                      Y     
+7      7222          rank                     7222          rank                     Y     
+8      3673          items                    3673          items                    Y     
+9      3196          based                    3196          based                    Y     
+10     389           on                       389           on                       Y     
+11     279           the                      279           the                      Y     
+12     1217          user                     1217          user                     Y     
+13     596          's                        596          's                        Y     
+14     22698         preference               22698         preference               Y     
+15     627          .\n                       627          .\n                       Y     
+16     1502         User                      1502         User                      Y     
+17     362           A                        362           A                        Y     
+18     605          10                        605          10                        Y     
+19     18723        FW                        18723        FW                        Y     
+20     24110        892                       24110        892                       Y     
+21     50           S                         50           S                         Y     
+22     2946         59                        2946         59                        Y     
+23     1905         AB                        1905         AB                        Y     
+24     41           J                         41           J                         Y     
+25     706           has                      706           has                      Y     
+26     15075         purchased                15075         purchased                Y     
+27     279           the                      279           the                      Y     
+28     2768          following                2768          following                Y     
+29     3673          items                    3673          items                    Y     
+30     304           in                       304           in                       Y     
+31     420           this                     420           this                     Y     
+32     2015          order                    2015          order                    Y     
+33     512          :\n                       512          :\n                       Y     
+34     12           -                         12           -                         Y     
+35     5473          {'                       5473          {'                       Y     
+36     1224         item                      1224         item                      Y     
+37     926          ID                        926          ID                        Y     
+38     1232         ':                        1232         ':                        Y     
+39     364           '                        364           '                        Y     
+40     33           B                         33           B                         Y     
+41     6726         002                       6726         002                       Y     
+42     6269         NG                        6269         NG                        Y     
+43     7614         ME                        7614         ME                        Y     
+44     62142        QC                        62142        QC                        Y     
+45     518          ',                        518          ',                        Y     
+46     364           '                        364           '                        Y     
+47     2150         title                     2150         title                     Y     
+48     1232         ':                        1232         ':                        Y     
+49     364           '                        364           '                        Y     
+50     59927        Ba                        59927        Ba                        Y     
+51     1383         By                        1383         By                        Y     
+52     75           l                         75           l                         Y     
+53     1056         iss                       1056         iss                       Y     
+54     1322          Pro                      1322          Pro                      Y     
+55     60411         BAB                      60411         BAB                      Y     
+56     2198         CH                        2198         CH                        Y     
+57     53           V                         53           V                         Y     
+58     1691         21                        1691         21                        Y     
+59     79350         Ceramic                  79350         Ceramic                  Y     
+60     18549         Instant                  18549         Instant                  Y     
+61     27162         Heat                     27162         Heat                     Y     
+62     220                                    220                                    Y     
+63     508          20                        508          20                        Y     
+64     11151        -R                        11151        -R                        Y     
+65     70496        oller                     70496        oller                     Y     
+66     2638          Set                      2638          Set                      Y     
+67     11           ,                         11           ,                         Y     
+68     8909          Var                      8909          Var                      Y     
+69     1142         ied                       1142         ied                       Y     
+70     518          ',                        1882         ','                       N     
+71     364           '                        30141        sales                     N     
+72     30141        sales                     23366        Rank                      N     
+73     23366        Rank                      1232         ':                        N     
+74     1232         ':                        5473          {'                       N     
+75     5473          {'                       94909        Beauty                    N     
+76     94909        Beauty                    1232         ':                        N     
+77     1232         ':                        220                                    N     
+78     220                                    24597        952                       N     
+79     24597        952                       1958         34                        N     
+80     1958         34                        2186         },                        N     
+81     2186         },                        364           '                        N     
+82     364           '                        15865        categories                N     
+83     15865        categories                1232         ':                        N     
+84     1232         ':                        32927         [['                      N     
+85     32927         [['                      94909        Beauty                    N     
+86     94909        Beauty                    518          ',                        N     
+87     518          ',                        364           '                        N     
+88     364           '                        70793        Hair                      N     
+89     70793        Hair                      10852         Care                     N     
+90     10852         Care                     518          ',                        N     
+91     518          ',                        364           '                        N     
+92     364           '                        626          St                        N     
+93     626          St                        99707        yling                     N     
+94     99707        yling                     14173         Tools                    N     
+95     14173         Tools                    518          ',                        N     
+96     518          ',                        364           '                        N     
+97     364           '                        70793        Hair                      N     
+98     70793        Hair                      15028         Roll                     N     
+99     15028         Roll                     388          ers                       N     
+100    388          ers                       75830        ']],                      N     
+101    75830        ']],                      364           '                        N     
+102    364           '                        6692         price                     N     
+103    6692         price                     1232         ':                        N     
+104    1232         ':                        20622         nan                      N     
+105    20622         nan                      11           ,                         N     
+106    11           ,                         364           '                        N     
+107    364           '                        13781        brand                     N     
+108    13781        brand                     1232         ':                        N     
+109    1232         ':                        20622         nan                      N     
+110    20622         nan                      534          }\n                       N     
+111    534          }\n                       12           -                         N     
+112    12           -                         5473          {'                       N     
+113    5473          {'                       1224         item                      N     
+114    1224         item                      926          ID                        N     
+115    926          ID                        1232         ':                        N     
+116    1232         ':                        364           '                        N     
+117    364           '                        33           B                         N     
+118    33           B                         8759         004                       N     
+119    8759         004                       11435        VM                        N     
+120    11435        VM                        38           G                         N     
+121    38           G                         22875        TY                        N     
+122    22875        TY                        19           4                         N     
+123    19           4                         518          ',                        N     
+124    518          ',                        364           '                        N     
+125    364           '                        2150         title                     N     
+126    2150         title                     1232         ':                        N     
+127    1232         ':                        330           "                        N     
+128    330           "                        33           B                         N     
+129    33           B                         5757         urt                       N     
+130    5757         urt                       596          's                        N     
+131    596          's                        2893          Be                       N     
+132    2893          Be                       288          es                        N     
+133    288          es                        328           S                        N     
+134    328           S                        19245        ensitive                  N     
+135    19245        ensitive                  13690         Daily                    N     
+136    13690         Daily                    82804         Moist                    N     
+137    82804         Moist                    324          ur                        N     
+138    324          ur                        4954         izing                     N     
+139    4954         izing                     30800         Cream                    N     
+140    30800         Cream                    11           ,                         N     
+141    11           ,                         220                                    N     
+142    220                                    16           1                         N     
+143    16           1                         13           .                         N     
+144    13           .                         23           8                         N     
+145    23           8                         507           O                        N     
+146    507           O                        1371         unc                       N     
+147    1371         unc                       288          es                        N     
+148    288          es                        39938        ",\'                      N     
+149    498          ",                        30141        sales                     N     
+150    364           '                        23366        Rank                      N     
+151    30141        sales                     1232         ':                        N     
+152    23366        Rank                      5473          {'                       N     
+153    1232         ':                        94909        Beauty                    N     
+154    5473          {'                       1232         ':                        N     
+155    94909        Beauty                    220                                    N     
+156    1232         ':                        22385        626                       N     
+157    220                                    2186         },                        N     
+158    22385        626                       364           '                        N     
+159    2186         },                        15865        categories                N     
+160    364           '                        1232         ':                        N     
+161    15865        categories                32927         [['                      N     
+162    1232         ':                        94909        Beauty                    N     
+163    32927         [['                      518          ',                        N     
+164    94909        Beauty                    364           '                        N     
+165    518          ',                        38286        Skin                      N     
+166    364           '                        10852         Care                     N     
+167    38286        Skin                      518          ',                        N     
+168    10852         Care                     364           '                        N     
+169    518          ',                        16680        Face                      N     
+170    364           '                        518          ',                        N     
+171    16680        Face                      364           '                        N     
+172    518          ',                        99881        Cream                     N     
+173    364           '                        82           s                         N     
+174    99881        Cream                     612           &                        N     
+175    82           s                         82804         Moist                    N     
+176    612           &                        324          ur                        N     
+177    82804         Moist                    12509        izers                     N     
+178    324          ur                        75830        ']],                      N     
+179    12509        izers                     364           '                        N     
+180    75830        ']],                      6692         price                     N     
+181    364           '                        1232         ':                        N     
+182    6692         price                     220                                    N     
+183    1232         ':                        23           8                         N     
+184    220                                    13           .                         N     
+185    23           8                         1758         35                        N     
+186    13           .                         11           ,                         N     
+187    1758         35                        364           '                        N     
+188    11           ,                         13781        brand                     N     
+189    364           '                        1232         ':                        N     
+190    13781        brand                     364           '                        N     
+191    1232         ':                        33           B                         N     
+192    364           '                        5757         urt                       N     
+193    33           B                         28977        &#                        N     
+194    5757         urt                       2137         39                        N     
+195    28977        &#                        40514        ;s                        N     
+196    2137         39                        2893          Be                       N     
+197    40514        ;s                        288          es                        N     
+198    2893          Be                       16823        '}\n                      N     
+199    288          es                        12           -                         N     
+200    16823        '}\n                      5473          {'                       N     
+201    12           -                         1224         item                      N     
+202    5473          {'                       926          ID                        N     
+203    1224         item                      1232         ':                        N     
+204    926          ID                        364           '                        N     
+205    1232         ':                        33           B                         N     
+206    364           '                        4119         001                       N     
+207    33           B                         7650         EC                        N     
+208    4119         001                       48           Q                         N     
+209    7650         EC                        19           4                         N     
+210    48           Q                         49           R                         N     
+211    19           4                         48           Q                         N     
+212    49           R                         518          ',                        N     
+213    48           Q                         364           '                        N     
+214    518          ',                        2150         title                     N     
+215    364           '                        1232         ':                        N     
+216    2150         title                     364           '                        N     
+217    1232         ':                        35           D                         N     
+218    364           '                        1009         ove                       N     
+219    35           D                         328           S                        N     
+220    1009         ove                       19245        ensitive                  N     
+221    328           S                        28049         Skin                     N     
+222    19245        ensitive                  452           N                        N     
+223    28049         Skin                     414          our                       N     
+224    452           N                        11218        ishing                    N     
+225    414          our                       14285         Body                     N     
+226    11218        ishing                    6113          Wash                     N     
+227    14285         Body                     11           ,                         N     
+228    6113          Wash                     220                                    N     
+229    11           ,                         1187         24                        N     
+230    220                                    507           O                        N     
+231    1187         24                        97793        unce                      N     
+232    507           O                        11           ,                         N     
+233    97793        unce                      1844         Un                        N     
+234    11           ,                         82           s                         N     
+235    1844         Un                        1189         cent                      N     
+236    82           s                         291          ed                        N     
+237    1189         cent                      320           (                        N     
+238    291          ed                        31784        Pack                      N     
+239    320           (                        315           of                       N     
+240    31784        Pack                      220                                    N     
+241    315           of                       18           3                         N     
+242    220                                    71173        )','                      N     
+243    18           3                         30141        sales                     N     
+244    19255        )',                       23366        Rank                      N     
+245    364           '                        1232         ':                        N     
+246    30141        sales                     5473          {'                       N     
+247    23366        Rank                      94909        Beauty                    N     
+248    1232         ':                        1232         ':                        Y     
+249    5473          {'                       220                                    N     
+250    94909        Beauty                    19057        368                       N     
+251    1232         ':                        2304         05                        N     
+252    220                                    2186         },                        N     
+253    19057        368                       364           '                        N     
+254    2304         05                        15865        categories                N     
+255    2186         },                        1232         ':                        N     
+256    364           '                        32927         [['                      N     
+257    15865        categories                94909        Beauty                    N     
+258    1232         ':                        518          ',                        N     
+259    32927         [['                      364           '                        N     
+260    94909        Beauty                    33           B                         N     
+261    518          ',                        589          ath                       N     
+262    364           '                        612           &                        N     
+263    33           B                         14285         Body                     N     
+264    589          ath                       518          ',                        N     
+265    612           &                        364           '                        N     
+266    14285         Body                     34           C                         N     
+267    518          ',                        22451        leans                     N     
+268    364           '                        388          ers                       N     
+269    34           C                         518          ',                        N     
+270    22451        leans                     364           '                        N     
+271    388          ers                       5561         Body                      N     
+272    518          ',                        6113          Wash                     N     
+273    364           '                        288          es                        N     
+274    5561         Body                      75830        ']],                      N     
+275    6113          Wash                     364           '                        N     
+276    288          es                        6692         price                     N     
+277    75830        ']],                      1232         ':                        N     
+278    364           '                        220                                    N     
+279    6692         price                     914          25                        N     
+280    1232         ':                        13           .                         N     
+281    220                                    5332         72                        N     
+282    914          25                        11           ,                         N     
+283    13           .                         364           '                        N     
+284    5332         72                        13781        brand                     N     
+285    11           ,                         1232         ':                        N     
+286    364           '                        364           '                        Y     
+287    13781        brand                     35           D                         N     
+288    1232         ':                        1009         ove                       N     
+289    364           '                        68725        '}\n\n                    N     
+290    35           D                         N/A          N/A                       N     
+291    1009         ove                       N/A          N/A                       N     
+292    68725        '}\n\n                    N/A          N/A                       N     
+--------------------------------------------------------------------------------
+
+Summary:
+Total tokens compared: 293
+Different tokens: 221
+Match rate: 24.57%
+
+Length difference detected:
+Extra tokens in original: [35, 1009, 68725]
+Extra tokens decoded: Dove'}
+
+

@@ -1,6 +1,11 @@
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
+
 from vllm import LLM, SamplingParams
 
-llm = LLM(model="meta-llama/Meta-Llama-3-8B-Instruct")
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", gpu_memory_utilization=0.8, dtype="half", max_model_len=20000)
 sampling_params = SamplingParams(temperature=0.5)
 
 

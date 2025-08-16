@@ -695,9 +695,9 @@ class LLMEngine:
                                    from_decoder_prompt=False)
 
         # Create a SequenceGroup based on SamplingParams or PoolingParams
-        print(f"Type of sampling_params: {type(params)}")
-        print(f"Is instance of SamplingParams: {isinstance(params, SamplingParams)}")
-        print(f"Module of SamplingParams: {SamplingParams.__module__}")
+        # print(f"Type of sampling_params: {type(params)}")
+        # print(f"Is instance of SamplingParams: {isinstance(params, SamplingParams)}")
+        # print(f"Module of SamplingParams: {SamplingParams.__module__}")
         if isinstance(params, SamplingParams):
             seq_group = self._create_sequence_group_with_sampling(
                 request_id,
