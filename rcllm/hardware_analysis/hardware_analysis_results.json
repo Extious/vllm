@@ -1,0 +1,156 @@
+{
+  "timestamp": 1755489381.435228,
+  "system_info": {
+    "platform": "Linux-5.4.17-2136.331.7.el8uek.x86_64-x86_64-with-glibc2.28",
+    "processor": "x86_64",
+    "architecture": [
+      "64bit",
+      "ELF"
+    ],
+    "cpu_count": 40,
+    "cpu_count_logical": 40,
+    "memory_total": 540166791168,
+    "memory_available": 519775502336,
+    "cpu_model": "Intel(R) Xeon(R) Silver 4114 CPU @ 2.20GHz"
+  },
+  "gpu_info": [
+    {
+      "id": "00000000:18:00.0",
+      "name": "Tesla V100-PCIE-32GB",
+      "uuid": "GPU-e5f4a2bf-fdd5-cd4e-bc75-e36d59fce594",
+      "architecture": "Volta",
+      "cuda_version": "Unknown",
+      "driver_version": "Unknown",
+      "vbios_version": "88.00.7E.00.03",
+      "temperature": "26 C",
+      "pci_bus_id": "00000000:18:00.0",
+      "pci_device_id": "1DB610DE",
+      "pci_link_gen_current": "Unknown",
+      "pci_link_width_current": "16x",
+      "performance_state": "P0",
+      "graphics_clock": "135 MHz",
+      "sm_clock": "135 MHz",
+      "mem_clock": "877 MHz"
+    },
+    {
+      "id": "00000000:3B:00.0",
+      "name": "Tesla V100-PCIE-32GB",
+      "uuid": "GPU-785cecb7-67e9-814d-3ff2-9e4610a123e5",
+      "architecture": "Volta",
+      "cuda_version": "Unknown",
+      "driver_version": "Unknown",
+      "vbios_version": "88.00.7E.00.03",
+      "temperature": "27 C",
+      "pci_bus_id": "00000000:3B:00.0",
+      "pci_device_id": "1DB610DE",
+      "pci_link_gen_current": "Unknown",
+      "pci_link_width_current": "16x",
+      "performance_state": "P0",
+      "graphics_clock": "135 MHz",
+      "sm_clock": "135 MHz",
+      "mem_clock": "877 MHz"
+    },
+    {
+      "id": "00000000:86:00.0",
+      "name": "Tesla V100-PCIE-32GB",
+      "uuid": "GPU-49dc7088-dab6-987a-6928-43da72c6b52b",
+      "architecture": "Volta",
+      "cuda_version": "Unknown",
+      "driver_version": "Unknown",
+      "vbios_version": "88.00.7E.00.03",
+      "temperature": "27 C",
+      "pci_bus_id": "00000000:86:00.0",
+      "pci_device_id": "1DB610DE",
+      "pci_link_gen_current": "Unknown",
+      "pci_link_width_current": "16x",
+      "performance_state": "P0",
+      "graphics_clock": "135 MHz",
+      "sm_clock": "135 MHz",
+      "mem_clock": "877 MHz"
+    },
+    {
+      "id": "00000000:AF:00.0",
+      "name": "Tesla V100-PCIE-32GB",
+      "uuid": "GPU-1ba99ab5-0ebd-ccbe-0c7e-e7aa09ed26b6",
+      "architecture": "Volta",
+      "cuda_version": "Unknown",
+      "driver_version": "Unknown",
+      "vbios_version": "88.00.7E.00.03",
+      "temperature": "30 C",
+      "pci_bus_id": "00000000:AF:00.0",
+      "pci_device_id": "1DB610DE",
+      "pci_link_gen_current": "Unknown",
+      "pci_link_width_current": "16x",
+      "performance_state": "P0",
+      "graphics_clock": "1230 MHz",
+      "sm_clock": "1230 MHz",
+      "mem_clock": "877 MHz"
+    }
+  ],
+  "topology_info": {
+    "matrix": "\t\u001b[4mGPU0\tGPU1\tGPU2\tGPU3\tNIC0\tNIC1\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tNODE\tSYS\tSYS\tNODE\tNODE\t0,2,4,6,8,10\t0\t\tN/A\nGPU1\tNODE\t X \tSYS\tSYS\tNODE\tNODE\t0,2,4,6,8,10\t0\t\tN/A\nGPU2\tSYS\tSYS\t X \tNODE\tSYS\tSYS\t1,3,5,7,9,11\t1\t\tN/A\nGPU3\tSYS\tSYS\tNODE\t X \tSYS\tSYS\t1,3,5,7,9,11\t1\t\tN/A\nNIC0\tNODE\tNODE\tSYS\tSYS\t X \tPIX\t\t\t\t\nNIC1\tNODE\tNODE\tSYS\tSYS\tPIX\t X \t\t\t\t\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n\nNIC Legend:\n\n  NIC0: mlx5_0\n  NIC1: mlx5_1\n\n"
+  },
+  "performance_info": {
+    "start_metrics": [
+      {
+        "gpu_util": 0.0,
+        "mem_util": 0.0,
+        "mem_used": 4,
+        "power": 23.99,
+        "temp": 26.0
+      },
+      {
+        "gpu_util": 0.0,
+        "mem_util": 0.0,
+        "mem_used": 4,
+        "power": 24.0,
+        "temp": 27.0
+      },
+      {
+        "gpu_util": 0.0,
+        "mem_util": 0.0,
+        "mem_used": 4,
+        "power": 25.37,
+        "temp": 27.0
+      },
+      {
+        "gpu_util": 0.0,
+        "mem_util": 0.0,
+        "mem_used": 30266,
+        "power": 35.32,
+        "temp": 30.0
+      }
+    ],
+    "nvidia_smi_latency_ms": {
+      "min": 764.9693489074707,
+      "max": 987.6644611358643,
+      "avg": 889.7735595703125
+    }
+  },
+  "connectivity_analysis": {
+    "pcie_analysis": {
+      "GPU0": {
+        "bus_id": "00000000:18:00.0",
+        "pcie_gen": "Unknown",
+        "pcie_width": "16x"
+      },
+      "GPU1": {
+        "bus_id": "00000000:3B:00.0",
+        "pcie_gen": "Unknown",
+        "pcie_width": "16x"
+      },
+      "GPU2": {
+        "bus_id": "00000000:86:00.0",
+        "pcie_gen": "Unknown",
+        "pcie_width": "16x"
+      },
+      "GPU3": {
+        "bus_id": "00000000:AF:00.0",
+        "pcie_gen": "Unknown",
+        "pcie_width": "16x"
+      }
+    },
+    "nvlink_connections": 2,
+    "connection_matrix": {}
+  }
+}

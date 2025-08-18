@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 os.environ["VLLM_ATTENTION_BACKEND"] = "XFORMERS"
 from vllm import LLM, SamplingParams
 import torch
@@ -11,7 +11,7 @@ from transformers import AutoTokenizer
 # 初始化大模型
 # llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.3", gpu_memory_utilization=0.95)
 # tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.3")
-llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len=10000)
+llm = LLM(model="meta-llama/Llama-3.1-8B-Instruct", gpu_memory_utilization=0.8, enforce_eager=True, max_model_len=10000, dtype="half")
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 
 llm.set_tokenizer(tokenizer)
@@ -831,6 +831,12 @@ def generate_recommendation_with_cacheblend(user_id):
     input_ids_length = len(input_ids)
     position = [idx for idx in position if 0 <= idx < input_ids_length]
     # print(f"边界检查后的position长度: {len(position)}")
+    
+    # 计算并输出imp_indices在prompt长度中的占比
+    imp_indices_ratio = len(position) / input_ids_length if input_ids_length > 0 else 0
+    print(f"imp_indices length: {len(position)}")
+    print(f"Total prompt length: {input_ids_length}")
+    print(f"imp_indices ratio: {imp_indices_ratio:.4f} ({imp_indices_ratio*100:.2f}%)")
 
     # 使用安全的解码方法
     input_prompt = tokenizer.decode(input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
@@ -1030,6 +1036,12 @@ def generate_recommendation_with_cpu_cache(user_id):
     # 边界检查：确保position中的索引不会溢出input_ids的长度
     input_ids_length = len(input_ids)
     position = [idx for idx in position if 0 <= idx < input_ids_length]
+    
+    # 计算并输出imp_indices在prompt长度中的占比
+    imp_indices_ratio = len(position) / input_ids_length if input_ids_length > 0 else 0
+    print(f"imp_indices length: {len(position)}")
+    print(f"Total prompt length: {input_ids_length}")
+    print(f"imp_indices ratio: {imp_indices_ratio:.4f} ({imp_indices_ratio*100:.2f}%)")
 
     # 使用安全的解码方法
     input_prompt = tokenizer.decode(input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
